@@ -1,5 +1,6 @@
 #include "../../include/creol/cli.hh"
 #include "../../include/creol/ast.hh"
+#include "../../include/creol/codegen.hh"
 #include "../../include/creol/cnst.hh"
 
 #include "../../include/external/argparse.hpp"
@@ -20,9 +21,7 @@ using namespace creol;
 
 extern FILE *yyin;
 
-extern int yyparse(void);
-
-extern ast::BlockSttmt *Program;
+extern int yyparse(creol::ast::BlockSttmt** Program);
 
 void cli::PrintErr(std::string message)
 {
@@ -125,15 +124,16 @@ void cli::Compiler::ParseArgs(const int argc, const char *const *argv)
 
 ast::BlockSttmt *cli::CreolLangParserWrapper::ParseCode(std::string Content, bool isFile)
 {
+    ast::BlockSttmt* ProgramAST = nullptr;
     if (isFile)
     {
-        ParseFile(Content);
+        ParseFile(Content, &ProgramAST);
     }
     else
     {
-        ParseText(Content);
+        ParseText(Content, &ProgramAST);
     }
-    return Program;
+    return ProgramAST;
 }
 
 void cli::Compiler::SaveCodeToFile(std::string Code, std::string Filename)
@@ -150,7 +150,7 @@ void cli::Compiler::SaveCodeToFile(std::string Code, std::string Filename)
     fclose(file);
 }
 
-void cli::CreolLangParserWrapper::ParseFile(std::string filename)
+void cli::CreolLangParserWrapper::ParseFile(std::string filename, ast::BlockSttmt** Program)
 {
     if (!fs::exists(filename))
     {
@@ -165,12 +165,12 @@ void cli::CreolLangParserWrapper::ParseFile(std::string filename)
     }
 
     yyin = file;
-    yyparse();
+    yyparse(Program);
 
     fclose(file);
 }
 
-void cli::CreolLangParserWrapper::ParseText(std::string text)
+void cli::CreolLangParserWrapper::ParseText(std::string text, ast::BlockSttmt** Program)
 {
     /// TODO: Implement this
     cli::PrintErr("cli::CreolLangParserWrapper::ParseText is not implemented yet!\n", -1);
@@ -208,7 +208,6 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
         cli::PrintErr("Format option not implemented yet.");
     }
 
-    // Checks if there's a matching extension at the end of the filename
     auto matchAtEndOfFilename = [name = Args.filename](std::string endstr)
     {
         return name.find(endstr, name.size() - endstr.size());
@@ -220,12 +219,18 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
     }
 
     ast::BlockSttmt *ProgramAST = CreolLangParserWrapper::ParseCode(Args.filename, true);
+    std::unique_ptr<ast::BlockSttmt> ProgramNode(ProgramAST);
 
     std::string GeneratedCode;
 
     try
     {
-        GeneratedCode = ProgramAST->CodeGen();
+        std::stringstream ss;
+        ast::CodeGenVisitor visitor(ss);
+        if (ProgramNode) {
+            ProgramNode->accept(visitor);
+        }
+        GeneratedCode = ss.str();
     }
     catch (std::exception &err)
     {

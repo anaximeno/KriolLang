@@ -1,216 +1,146 @@
 #include "../../include/creol/ast.hh"
+#include "../../include/creol/codegen.hh"
 #include "../../include/creol/cbinds.hh"
 
-using namespace creol;
+using namespace creol::ast;
 
-std::string ast::Expr::CodeGen()
-{
-    return "";
+std::string translate_type(const std::string& type) {
+    if (type == "nteru") return "int";
+    if (type == "real") return "float";
+    if (type == "vaziu") return "void";
+    if (type == "bool") return "unsigned short";
+    return type;
 }
 
-std::string ast::VarDeclSttmt::CodeGen()
-{
-    std::string Decl = Type + ' ' + Name;
 
-    if (Value)
-    {
-        Decl = Decl + C_EQ + Value->CodeGen();
+void CodeGenVisitor::visit(VarDeclSttmt& node) {
+    os << translate_type(node.Type) << " " << node.Name;
+    if (node.Value) {
+        os << C_EQ;
+        node.Value->accept(*this);
+    }
+}
+
+void CodeGenVisitor::visit(BlockSttmt& node) {
+    if (node.BracketsOn) os << C_OPEN_CURLY;
+    for (auto& sttmt : node.SttmtList) {
+        if (sttmt) sttmt->accept(*this);
+    }
+    if (node.BracketsOn) os << C_CLOSE_CURLY;
+}
+
+void CodeGenVisitor::visit(FuncArgs& node) {
+    for (size_t i = 0; i < node.Args.size(); ++i) {
+        if (node.Args[i]) node.Args[i]->accept(*this);
+        if (i < node.Args.size() - 1) os << C_COMMA;
+    }
+}
+
+void CodeGenVisitor::visit(FuncDeclSttmt& node) {
+    // localizing the main entry point
+    std::string name = node.Name;
+    if (name == "inisiu") {
+        name = "main";
     }
 
-    return Decl;
+    os << translate_type(node.Type) << " " << name << C_OPEN_PAR;
+    if (node.Args) node.Args->accept(*this);
+    os << C_CLOSE_PAR;
+    if (node.Body) node.Body->accept(*this);
 }
 
-void ast::VarDeclSttmt::SetType(std::string Type)
-{
-    this->Type = Type;
-}
-
-void ast::BlockSttmt::AddSttmt(ast::Sttmt *sttmt)
-{
-    SttmtList.push_back(sttmt);
-}
-
-std::string ast::BlockSttmt::CodeGen()
-{
-    std::string block = "";
-
-    for (auto &S : SttmtList)
-    {
-        block += S ? S->CodeGen() : "";
-    };
-
-    if (BracketsOn)
-    {
-        block = C_OPEN_CURLY + block + C_CLOSE_CURLY;
+void CodeGenVisitor::visit(IfSttmt& node) {
+    os << C_IF << C_OPEN_PAR;
+    if (node.Cond) node.Cond->accept(*this);
+    os << C_CLOSE_PAR;
+    if (node.Then) node.Then->accept(*this);
+    if (node.Else) {
+        os << " " << C_ELSE << " ";
+        node.Else->accept(*this);
     }
-
-    return block;
 }
 
-void ast::BlockSttmt::UseBrackets()
-{
-    BracketsOn = true;
+void CodeGenVisitor::visit(WhileSttmt& node) {
+    os << C_WHILE << C_OPEN_PAR;
+    if (node.Cond) node.Cond->accept(*this);
+    os << C_CLOSE_PAR;
+    if (node.Do) node.Do->accept(*this);
 }
 
-void ast::BlockSttmt::DontUseBrackets()
-{
-    BracketsOn = false;
+void CodeGenVisitor::visit(JumpSttmt& node) {
+    os << node.Name << C_SEMICOLON;
 }
 
-void ast::FuncArgs::AddArg(ast::VarDeclSttmt *Arg)
-{
-    Args.push_back(Arg);
+void CodeGenVisitor::visit(ReturnSttmt& node) {
+    os << C_RETURN << " ";
+    if (node.ReturnValue) node.ReturnValue->accept(*this);
+    os << C_SEMICOLON;
 }
 
-std::string ast::FuncArgs::CodeGen()
-{
-    std::string Arguments = "";
-
-    for (int i = 0; i < (int)Args.size(); ++i)
-    {
-        Arguments += Args[i] ? Args[i]->CodeGen() : "";
-
-        if (Args[i] && i < (int)Args.size() - 1)
-        {
-            Arguments += C_COMMA;
-        }
+void CodeGenVisitor::visit(FuncCallArgs& node) {
+    for (size_t i = 0; i < node.Args.size(); ++i) {
+        if (node.Args[i]) node.Args[i]->accept(*this);
+        if (i < node.Args.size() - 1) os << C_COMMA;
     }
-
-    return Arguments;
 }
 
-std::string ast::FuncDeclSttmt::CodeGen()
-{
-    return Type + " " + Name + C_OPEN_PAR + Args->CodeGen() + C_CLOSE_PAR + Body->CodeGen();
+void CodeGenVisitor::visit(FunCallExpr& node) {
+    os << node.Name << C_OPEN_PAR;
+    if (node.Args) node.Args->accept(*this);
+    os << C_CLOSE_PAR;
 }
 
-std::string ast::IfSttmt::CodeGen()
-{
-    std::string If_Code = C_IF + C_OPEN_PAR + Cond->CodeGen() + C_CLOSE_PAR + Then->CodeGen();
+void CodeGenVisitor::visit(MostraFunCallExpr& node) {
+    os << node.Name << C_OPEN_PAR;
+    if (node.Args) node.Args->accept(*this);
+    os << C_CLOSE_PAR;
+}
 
-    if (Else)
-    {
-        If_Code = If_Code + " " + C_ELSE + " " + Else->CodeGen();
+void CodeGenVisitor::visit(BinExpr& node) {
+    if (node.LHS) node.LHS->accept(*this);
+    os << " " << node.Op << " ";
+    if (node.RHS) node.RHS->accept(*this);
+}
+
+void CodeGenVisitor::visit(LiteralExpr& node) {
+    if (node.AutoCast) {
+        os << C_OPEN_PAR << translate_type(node.Type) << C_CLOSE_PAR;
     }
-
-    return If_Code;
+    os << node.Value;
 }
 
-std::string ast::WhileSttmt::CodeGen()
-{
-    return C_WHILE + C_OPEN_PAR + Cond->CodeGen() + C_CLOSE_PAR + Do->CodeGen();
+void CodeGenVisitor::visit(ExprSttmt& node) {
+    if (node.Expression) node.Expression->accept(*this);
+    os << C_SEMICOLON;
 }
 
-std::string ast::JumpSttmt::CodeGen()
-{
-    return Name + C_SEMICOLON;
+void CodeGenVisitor::visit(IdentExpr& node) {
+    os << node.Name;
 }
 
-std::string ast::ReturnSttmt::CodeGen()
-{
-    std::string Value = "";
-
-    if (ReturnValue)
-    {
-        Value = " " + ReturnValue->CodeGen();
-    }
-
-    return C_RETURN + Value + C_SEMICOLON;
+void CodeGenVisitor::visit(ParExpr& node) {
+    os << C_OPEN_PAR;
+    if (node.Content) node.Content->accept(*this);
+    os << C_CLOSE_PAR;
 }
 
-void ast::FuncCallArgs::AddArg(Expr *Arg)
-{
-    Args.push_back(Arg);
+void CodeGenVisitor::visit(AssignExpr& node) {
+    if (node.Assignee) node.Assignee->accept(*this);
+    os << C_EQ;
+    if (node.Assigned) node.Assigned->accept(*this);
 }
 
-std::string ast::FuncCallArgs::CodeGen()
-{
-    std::string Arguments = "";
-
-    for (int i = 0; i < (int)Args.size(); ++i)
-    {
-        Arguments += Args[i] ? Args[i]->CodeGen() : "";
-        if (Args[i] && i < (int)Args.size() - 1)
-        {
-            Arguments += C_COMMA;
-        }
-    }
-
-    return Arguments;
+void CodeGenVisitor::visit(ForSttmt& node) {
+    os << C_FOR << C_OPEN_PAR;
+    if (node.Start) node.Start->accept(*this);
+    os << C_SEMICOLON;
+    if (node.Cond) node.Cond->accept(*this);
+    os << C_SEMICOLON;
+    if (node.After) node.After->accept(*this);
+    os << C_CLOSE_PAR;
+    if (node.Then) node.Then->accept(*this);
 }
 
-std::string ast::FunCallExpr::CodeGen()
-{
-    std::string Arguments = "";
-
-    if (Args)
-    {
-        Arguments = Args->CodeGen();
-    }
-
-    return Name + C_OPEN_PAR + Arguments + C_CLOSE_PAR;
-}
-
-std::string ast::BinExpr::CodeGen()
-{
-    auto L = LHS ? LHS->CodeGen() : "";
-    auto R = RHS ? RHS->CodeGen() : "";
-    return L + " " + Op + " " + R;
-}
-
-std::string ast::LiteralExpr::CodeGen()
-{
-    std::string Prefix = "";
-
-    if (AutoCast)
-    {
-        Prefix = C_OPEN_PAR + Type + C_CLOSE_PAR;
-    }
-
-    return Prefix + Value;
-}
-
-void ast::LiteralExpr::ActivateAutoCast()
-{
-    AutoCast = true;
-}
-
-void ast::LiteralExpr::DeactivateAutoCast()
-{
-    AutoCast = false;
-}
-
-std::string ast::ExprSttmt::CodeGen()
-{
-    return Expression ? Expression->CodeGen() + C_SEMICOLON : C_SEMICOLON;
-}
-
-std::string ast::IdentExpr::CodeGen()
-{
-    return Name;
-}
-
-std::string ast::ParExpr::CodeGen()
-{
-    auto C = Content ? Content->CodeGen() : "";
-    return C_OPEN_PAR + C + C_CLOSE_PAR;
-}
-
-std::string ast::AssignExpr::CodeGen()
-{
-    return Assignee->CodeGen() + C_EQ + Assigned->CodeGen();
-}
-
-std::string ast::ForSttmt::CodeGen()
-{
-    auto S = Start ? Start->CodeGen() : "";
-    auto C = Cond ? Cond->CodeGen() : "";
-    auto A = After ? After->CodeGen() : "";
-    auto T = Then ? Then->CodeGen() : "";
-    return C_FOR + C_OPEN_PAR + S + C_SEMICOLON + C + C_SEMICOLON + A + C_CLOSE_PAR + T;
-}
-
-std::string ast::ImportSttmt::CodeGen()
-{
-    return C_IMPORT + " " + Import + "\n";
+void CodeGenVisitor::visit(ImportSttmt& node) {
+    os << C_IMPORT << " " << node.Import << "\n";
 }

@@ -1,6 +1,6 @@
-impristan "stdio.h"
+inpristan "stdio.h"
 
-int main() {
+nteru inisiu() {
     mostra("Kuale, Mundu!\n");
     divolvi 0;
 }

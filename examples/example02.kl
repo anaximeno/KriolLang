@@ -1,16 +1,16 @@
-impristan "stdio.h"
+inpristan "stdio.h"
 
-int soma(int n) {
-    int acc = 0;
+nteru soma(nteru n) {
+    nteru acc = 0;
 
-    int i;
-    di i = 0 ; i < n ; i = i + 1 {
+    nteru i;
+    pa i = 0 ; i < n ; i = i + 1 {
         acc = acc + i;
     }
 
     divolvi acc;
 }
 
-int main() {
+nteru inisiu() {
     mostra("Soma ti 10 é igual a %d\n", soma(10));
 }

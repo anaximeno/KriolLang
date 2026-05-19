@@ -104,7 +104,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 17 "rules/parser.y"
+#line 19 "rules/parser.y"
 
     int token;
     std::string* integer;
@@ -131,7 +131,7 @@ typedef union YYSTYPE YYSTYPE;
 extern YYSTYPE yylval;
 
 
-int yyparse (void);
+int yyparse (creol::ast::BlockSttmt** Program);
 
 
 #endif /* !YY_YY_PARSER_HH_INCLUDED  */

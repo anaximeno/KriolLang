@@ -17,6 +17,7 @@ rules/parser
 
 # Compiled cpp headers
 *.gch
+*.pch
 
 # Compiler binary
-./creol
+/creol

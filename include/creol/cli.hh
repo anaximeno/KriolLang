@@ -29,9 +29,9 @@ namespace creol
         class CreolLangParserWrapper
         {
             /// Parses a code on a file
-            static void ParseFile(std::string filename);
+            static void ParseFile(std::string filename, ast::BlockSttmt** Program);
             /// Parses as text
-            static void ParseText(std::string text);
+            static void ParseText(std::string text, ast::BlockSttmt** Program);
 
         public:
             /// Used to parse the code

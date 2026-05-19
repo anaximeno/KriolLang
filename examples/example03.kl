@@ -1,10 +1,10 @@
-impristan "stdio.h"
-impristan "stdbool.h"
+inpristan "stdio.h"
+inpristan "stdbool.h"
 
-void dizenhaLinha(int tamanhu, bool dizenhaLinhaNaFin) {
-    int i;
+vaziu dizenhaLinha(nteru tamanhu, bool dizenhaLinhaNaFin) {
+    nteru i;
 
-    di i = 0 ; i < tamanhu ; i = i + 1 {
+    pa i = 0 ; i < tamanhu ; i = i + 1 {
         mostra("-");
     }
 
@@ -13,22 +13,22 @@ void dizenhaLinha(int tamanhu, bool dizenhaLinhaNaFin) {
     }
 }
 
-void mostraMensagem() {
-    int i = 1;
+vaziu mostraMensagem() {
+    nteru i = 1;
 
     nkuantu i < 10 {
-        dizenhaLinha(i, sim);
+        dizenhaLinha(i, sin);
         i = i + 1;
     }
 
     dizenhaLinha(i, nau);
     mostra("  Oi, Creol!\n");
 
-    di i = i - 1 ; i > 0 ; i = i - 1 {
-        dizenhaLinha(i, sim);
+    pa i = i - 1 ; i > 0 ; i = i - 1 {
+        dizenhaLinha(i, sin);
     }
 }
 
-int main() {
+nteru inisiu() {
     mostraMensagem();
 }

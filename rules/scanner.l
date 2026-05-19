@@ -13,7 +13,7 @@
     #define YYERROR_VERBOSE 1
 
     #define SAVE_TOKEN     yylval.string  = new std::string(yytext, yyleng)
-    #define SAVE_BOOLEAN   yylval.boolean = new std::string(strcmp(yytext, "sim") == 0 ? "1" : "0");
+    #define SAVE_BOOLEAN   yylval.boolean = new std::string(strcmp(yytext, "sin") == 0 ? "1" : "0");
     #define TOKENIZE(sym) (yylval.token   = sym)
 
     int yyerror(char const*);
@@ -32,20 +32,20 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 [ \t\n]         /* ignore */;
 
 "mostra"        return TOKENIZE(MOSTRA);
-"impristan"     return TOKENIZE(IMPRISTAN);
+"inpristan"     return TOKENIZE(IMPRISTAN);
 "si"            return TOKENIZE(SI);
 "sinon"         return TOKENIZE(SINON);
 "divolvi"       return TOKENIZE(DIVOLVI);
-"di"            return TOKENIZE(DI);
+"pa"            return TOKENIZE(DI);
 "nkuantu"       return TOKENIZE(NKUANTU);
-"int"           SAVE_TOKEN;   return TYPE_INT;
-"float"         SAVE_TOKEN;   return TYPE_FLOAT;
-"void"          SAVE_TOKEN;   return TYPE_VOID;
+"nteru"         SAVE_TOKEN;   return TYPE_INT;
+"real"          SAVE_TOKEN;   return TYPE_FLOAT;
+"vaziu"         SAVE_TOKEN;   return TYPE_VOID;
 "bool"          SAVE_TOKEN;   return TYPE_BOOL;
-"sim"           SAVE_BOOLEAN; return BOOL_LIT;
+"sin"           SAVE_BOOLEAN; return BOOL_LIT;
 "nau"           SAVE_BOOLEAN; return BOOL_LIT;
 "para"          return TOKENIZE(PARA);
-"continua"      return TOKENIZE(CONTINUA);
+"kontinua"      return TOKENIZE(CONTINUA);
 "+"             return TOKENIZE(PLUS);
 "-"             return TOKENIZE(MINUS);
 "*"             return TOKENIZE(MUL);
