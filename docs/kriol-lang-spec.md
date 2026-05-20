@@ -174,9 +174,9 @@ Language specifications for the KriolLang programming language.
 
 The specification of the KriolLang programming language is released under the [MIT License](LICENSE).
 
-## Vocabulary (ALUPEC compliant)
+## Vocabulary
 
-KriolLang is localized strictly using standard ALUPEC orthography. Below are the keywords and types in the language mapped to standard C.
+Below are the keywords and types in the language mapped to standard C.
 
 | KriolLang   | C Equivalent | Meaning      |
 | ----------- | ------------ | ------------ |
