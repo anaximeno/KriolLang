@@ -20,4 +20,4 @@ rules/parser
 *.pch
 
 # Compiler binary
-/creol
+/kriol

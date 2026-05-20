@@ -69,9 +69,9 @@
 /* First part of user prologue.  */
 #line 1 "rules/parser.y"
 
-    #include "include/creol/ast.hh"
-    #include "include/creol/cli.hh"
-    #include "include/creol/codegen.hh"
+    #include "include/kriol/ast.hh"
+    #include "include/kriol/cli.hh"
+    #include "include/kriol/codegen.hh"
 
     #include <cstdio>
     #include <cstdlib>
@@ -79,9 +79,9 @@
     #include <memory>
 
     extern int yylex();
-    void yyerror(creol::ast::BlockSttmt** Program, const char* err);
+    void yyerror(kriol::ast::BlockSttmt** Program, const char* err);
 
-    using namespace creol;
+    using namespace kriol;
 
 #line 87 "parser.cc"
 
@@ -885,7 +885,7 @@ do {                                                                      \
 
 static void
 yy_symbol_value_print (FILE *yyo,
-                       yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, creol::ast::BlockSttmt** Program)
+                       yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, kriol::ast::BlockSttmt** Program)
 {
   FILE *yyoutput = yyo;
   YY_USE (yyoutput);
@@ -904,7 +904,7 @@ yy_symbol_value_print (FILE *yyo,
 
 static void
 yy_symbol_print (FILE *yyo,
-                 yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, creol::ast::BlockSttmt** Program)
+                 yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, kriol::ast::BlockSttmt** Program)
 {
   YYFPRINTF (yyo, "%s %s (",
              yykind < YYNTOKENS ? "token" : "nterm", yysymbol_name (yykind));
@@ -943,7 +943,7 @@ do {                                                            \
 
 static void
 yy_reduce_print (yy_state_t *yyssp, YYSTYPE *yyvsp,
-                 int yyrule, creol::ast::BlockSttmt** Program)
+                 int yyrule, kriol::ast::BlockSttmt** Program)
 {
   int yylno = yyrline[yyrule];
   int yynrhs = yyr2[yyrule];
@@ -1272,7 +1272,7 @@ yysyntax_error (YYPTRDIFF_T *yymsg_alloc, char **yymsg,
 
 static void
 yydestruct (const char *yymsg,
-            yysymbol_kind_t yykind, YYSTYPE *yyvaluep, creol::ast::BlockSttmt** Program)
+            yysymbol_kind_t yykind, YYSTYPE *yyvaluep, kriol::ast::BlockSttmt** Program)
 {
   YY_USE (yyvaluep);
   YY_USE (Program);
@@ -1576,7 +1576,7 @@ int yynerrs;
 `----------*/
 
 int
-yyparse (creol::ast::BlockSttmt** Program)
+yyparse (kriol::ast::BlockSttmt** Program)
 {
     yy_state_fast_t yystate = 0;
     /* Number of tokens to shift before error messages enabled.  */
@@ -2552,6 +2552,6 @@ yyreturnlab:
 #line 230 "rules/parser.y"
 
 
-void yyerror(creol::ast::BlockSttmt** Program, const char* err) {
-    creol::cli::PrintErr(err, 1);
+void yyerror(kriol::ast::BlockSttmt** Program, const char* err) {
+    kriol::cli::PrintErr(err, 1);
 }

@@ -1,5 +1,5 @@
-#ifndef _CREOL_CBINDS_HEADER
-#define _CREOL_CBINDS_HEADER
+#ifndef _KRIOL_CBINDS_HEADER
+#define _KRIOL_CBINDS_HEADER
 
 #include <string>
 
@@ -33,4 +33,4 @@
 
 #define C_PRINTF _("printf")
 
-#endif // _CREOL_CBINDS_HEADER
+#endif // _KRIOL_CBINDS_HEADER

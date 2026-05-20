@@ -1,10 +1,10 @@
-.DEFAULT_GOAL := creol
+.DEFAULT_GOAL := kriol
 
-.PHONY: creol debug release clean
+.PHONY: kriol debug release clean
 
 CC = clang++
 
-OUTPUT = creol
+OUTPUT = kriol
 
 FLAGS = -std=c++17 -fPIC
 
@@ -15,16 +15,16 @@ RLS_FLAGS = $(FLAGS) -O3 -finline-functions
 OBJS = main.o ast.o cli.o parser.o scanner.o
 
 SRCS = main.cpp \
-	   src/creol/ast.cc \
-	   src/creol/cli.cc \
+	   src/kriol/ast.cc \
+	   src/kriol/cli.cc \
 	   parser.cc scanner.cc \
 	   include/external/argparse.hpp
 
 # The default build is debug.
 # Change to release if wanted.
-creol: debug
+kriol: debug
 	@echo "\n\nRun the compiler with:"
-	@echo "\n  ./creol --help\n"
+	@echo "\n  ./kriol --help\n"
 
 dbg-obj: $(SRCS)
 	@echo "~~ Debug build ~~"
@@ -47,4 +47,4 @@ scanner.cc:
 	flex -o scanner.cc rules/scanner.l
 
 clean:
-	rm *.o creol
+	rm *.o kriol parser.cc parser.hh scanner.cc

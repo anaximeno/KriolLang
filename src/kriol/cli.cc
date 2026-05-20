@@ -1,7 +1,7 @@
-#include "../../include/creol/cli.hh"
-#include "../../include/creol/ast.hh"
-#include "../../include/creol/codegen.hh"
-#include "../../include/creol/cnst.hh"
+#include "../../include/kriol/cli.hh"
+#include "../../include/kriol/ast.hh"
+#include "../../include/kriol/codegen.hh"
+#include "../../include/kriol/cnst.hh"
 
 #include "../../include/external/argparse.hpp"
 
@@ -17,15 +17,15 @@
 namespace fs = std::filesystem;
 namespace ap = argparse;
 
-using namespace creol;
+using namespace kriol;
 
 extern FILE *yyin;
 
-extern int yyparse(creol::ast::BlockSttmt** Program);
+extern int yyparse(kriol::ast::BlockSttmt** Program);
 
 void cli::PrintErr(std::string message)
 {
-    std::cerr << "Creol: Err: " << message << std::endl;
+    std::cerr << "Kriol: Err: " << message << std::endl;
 }
 
 void cli::PrintErr(std::string message, int exitNum)
@@ -122,7 +122,7 @@ void cli::Compiler::ParseArgs(const int argc, const char *const *argv)
     Args.shouldCheckExtension = !Parser->get<bool>("--ignore-extension");
 }
 
-ast::BlockSttmt *cli::CreolLangParserWrapper::ParseCode(std::string Content, bool isFile)
+ast::BlockSttmt *cli::KriolLangParserWrapper::ParseCode(std::string Content, bool isFile)
 {
     ast::BlockSttmt* ProgramAST = nullptr;
     if (isFile)
@@ -150,7 +150,7 @@ void cli::Compiler::SaveCodeToFile(std::string Code, std::string Filename)
     fclose(file);
 }
 
-void cli::CreolLangParserWrapper::ParseFile(std::string filename, ast::BlockSttmt** Program)
+void cli::KriolLangParserWrapper::ParseFile(std::string filename, ast::BlockSttmt** Program)
 {
     if (!fs::exists(filename))
     {
@@ -170,10 +170,10 @@ void cli::CreolLangParserWrapper::ParseFile(std::string filename, ast::BlockSttm
     fclose(file);
 }
 
-void cli::CreolLangParserWrapper::ParseText(std::string text, ast::BlockSttmt** Program)
+void cli::KriolLangParserWrapper::ParseText(std::string text, ast::BlockSttmt** Program)
 {
     /// TODO: Implement this
-    cli::PrintErr("cli::CreolLangParserWrapper::ParseText is not implemented yet!\n", -1);
+    cli::PrintErr("cli::KriolLangParserWrapper::ParseText is not implemented yet!\n", -1);
 }
 
 void cli::Compiler::BuildCode(std::string Code)
@@ -218,7 +218,7 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
         cli::PrintErr("File format not recognized. Filename should end with a '" + std::string(KL_STANDARD_FILE_EXTENSION) + "' file extension.", 1);
     }
 
-    ast::BlockSttmt *ProgramAST = CreolLangParserWrapper::ParseCode(Args.filename, true);
+    ast::BlockSttmt *ProgramAST = KriolLangParserWrapper::ParseCode(Args.filename, true);
     std::unique_ptr<ast::BlockSttmt> ProgramNode(ProgramAST);
 
     std::string GeneratedCode;

@@ -1,6 +1,6 @@
-# CreolLang Language Specification
+# KriolLang Language Specification
 
-Language specifications for the CreolLang programming language.
+Language specifications for the KriolLang programming language.
 
 *A modified version of the **Backus-Naus Form** language was used for describing this language.*
 
@@ -172,13 +172,13 @@ Language specifications for the CreolLang programming language.
 
 ## License
 
-The specification of the CreolLang programming language is released under the [MIT License](LICENSE).
+The specification of the KriolLang programming language is released under the [MIT License](LICENSE).
 
 ## Vocabulary (ALUPEC compliant)
 
-CreolLang is localized strictly using standard ALUPEC orthography. Below are the keywords and types in the language mapped to standard C.
+KriolLang is localized strictly using standard ALUPEC orthography. Below are the keywords and types in the language mapped to standard C.
 
-| CreolLang   | C Equivalent | Meaning      |
+| KriolLang   | C Equivalent | Meaning      |
 | ----------- | ------------ | ------------ |
 | nteru       | int          | Integer      |
 | real        | float        | Float        |

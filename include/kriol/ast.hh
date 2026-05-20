@@ -1,5 +1,5 @@
-#ifndef _CREOL_AST_TRANSPILER_HEADER
-#define _CREOL_AST_TRANSPILER_HEADER
+#ifndef _KRIOL_AST_TRANSPILER_HEADER
+#define _KRIOL_AST_TRANSPILER_HEADER
 
 #include <string>
 #include <vector>
@@ -8,7 +8,7 @@
 
 #include "./cbinds.hh"
 
-namespace creol {
+namespace kriol {
 namespace ast {
 
     // Forward declarations for Visitor
@@ -255,4 +255,4 @@ namespace ast {
 }
 }
 
-#endif // _CREOL_AST_TRANSPILER_HEADER
+#endif // _KRIOL_AST_TRANSPILER_HEADER

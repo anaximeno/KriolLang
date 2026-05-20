@@ -1,7 +1,7 @@
 %{
-    #include "include/creol/ast.hh"
-    #include "include/creol/cli.hh"
-    #include "include/creol/codegen.hh"
+    #include "include/kriol/ast.hh"
+    #include "include/kriol/cli.hh"
+    #include "include/kriol/codegen.hh"
 
     #include <cstdio>
     #include <cstdlib>
@@ -9,12 +9,12 @@
     #include <memory>
 
     extern int yylex();
-    void yyerror(creol::ast::BlockSttmt** Program, const char* err);
+    void yyerror(kriol::ast::BlockSttmt** Program, const char* err);
 
-    using namespace creol;
+    using namespace kriol;
 %}
 
-%parse-param { creol::ast::BlockSttmt** Program }
+%parse-param { kriol::ast::BlockSttmt** Program }
 
 %union {
     int token;
@@ -22,13 +22,13 @@
     std::string* floatingpoint;
     std::string* boolean;
     std::string* string;
-    creol::ast::Expr* expr;
-    creol::ast::Sttmt* sttmt;
-    creol::ast::BlockSttmt* block;
-    creol::ast::VarDeclSttmt* vardecl;
-    creol::ast::FuncArgs* params;
-    creol::ast::FuncCallArgs* args;
-    creol::ast::LiteralExpr* litexpr;
+    kriol::ast::Expr* expr;
+    kriol::ast::Sttmt* sttmt;
+    kriol::ast::BlockSttmt* block;
+    kriol::ast::VarDeclSttmt* vardecl;
+    kriol::ast::FuncArgs* params;
+    kriol::ast::FuncCallArgs* args;
+    kriol::ast::LiteralExpr* litexpr;
 }
 
 %destructor { delete $$; } <string> <integer> <floatingpoint> <boolean>
@@ -229,6 +229,6 @@ jump_statement : PARA SEMIC { $$ = new ast::JumpSttmt("break"); }
                ;
 %%
 
-void yyerror(creol::ast::BlockSttmt** Program, const char* err) {
-    creol::cli::PrintErr(err, 1);
+void yyerror(kriol::ast::BlockSttmt** Program, const char* err) {
+    kriol::cli::PrintErr(err, 1);
 }

@@ -111,13 +111,13 @@ union YYSTYPE
     std::string* floatingpoint;
     std::string* boolean;
     std::string* string;
-    creol::ast::Expr* expr;
-    creol::ast::Sttmt* sttmt;
-    creol::ast::BlockSttmt* block;
-    creol::ast::VarDeclSttmt* vardecl;
-    creol::ast::FuncArgs* params;
-    creol::ast::FuncCallArgs* args;
-    creol::ast::LiteralExpr* litexpr;
+    kriol::ast::Expr* expr;
+    kriol::ast::Sttmt* sttmt;
+    kriol::ast::BlockSttmt* block;
+    kriol::ast::VarDeclSttmt* vardecl;
+    kriol::ast::FuncArgs* params;
+    kriol::ast::FuncCallArgs* args;
+    kriol::ast::LiteralExpr* litexpr;
 
 #line 123 "parser.hh"
 
@@ -131,7 +131,7 @@ typedef union YYSTYPE YYSTYPE;
 extern YYSTYPE yylval;
 
 
-int yyparse (creol::ast::BlockSttmt** Program);
+int yyparse (kriol::ast::BlockSttmt** Program);
 
 
 #endif /* !YY_YY_PARSER_HH_INCLUDED  */

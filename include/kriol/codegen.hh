@@ -1,12 +1,12 @@
-#ifndef _CREOL_CODEGEN_HEADER
-#define _CREOL_CODEGEN_HEADER
+#ifndef _KRIOL_CODEGEN_HEADER
+#define _KRIOL_CODEGEN_HEADER
 
 #include "ast.hh"
 #include "cbinds.hh"
 #include <iostream>
 #include <ostream>
 
-namespace creol {
+namespace kriol {
 namespace ast {
 
     class CodeGenVisitor : public Visitor {
@@ -40,4 +40,4 @@ namespace ast {
 }
 }
 
-#endif // _CREOL_CODEGEN_HEADER
+#endif // _KRIOL_CODEGEN_HEADER

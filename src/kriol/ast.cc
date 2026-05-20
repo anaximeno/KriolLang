@@ -1,8 +1,8 @@
-#include "../../include/creol/ast.hh"
-#include "../../include/creol/codegen.hh"
-#include "../../include/creol/cbinds.hh"
+#include "../../include/kriol/ast.hh"
+#include "../../include/kriol/codegen.hh"
+#include "../../include/kriol/cbinds.hh"
 
-using namespace creol::ast;
+using namespace kriol::ast;
 
 std::string translate_type(const std::string& type) {
     if (type == "nteru") return "int";

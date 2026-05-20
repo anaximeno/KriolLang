@@ -1,5 +1,5 @@
-#ifndef _CREOL_CLI_HEADER
-#define _CREOL_CLI_HEADER
+#ifndef _KRIOL_CLI_HEADER
+#define _KRIOL_CLI_HEADER
 
 #include "ast.hh"
 
@@ -13,7 +13,7 @@
 
 namespace ap = argparse;
 
-namespace creol
+namespace kriol
 {
     namespace cli
     {
@@ -26,7 +26,7 @@ namespace creol
         /// Encodes a string to hexadecimal string
         std::string ConvertToHex(std::string str);
 
-        class CreolLangParserWrapper
+        class KriolLangParserWrapper
         {
             /// Parses a code on a file
             static void ParseFile(std::string filename, ast::BlockSttmt** Program);
@@ -72,4 +72,4 @@ namespace creol
     };
 };
 
-#endif // _CREOL_CLI_HEADER
+#endif // _KRIOL_CLI_HEADER

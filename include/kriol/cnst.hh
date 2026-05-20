@@ -1,0 +1,10 @@
+#ifndef _KRIOL_CNST_HEADER
+#define _KRIOL_CNST_HEADER
+
+#define KL_STANDARD_FILE_EXTENSION "kl"
+
+#define KL_STANDARD_COMPILER_NAME "kriol"
+
+#define KL_ALTERNATIVE_COMPILER_NAME "kriol"
+
+#endif // _KRIOL_CNST_HEADER

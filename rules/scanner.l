@@ -1,8 +1,8 @@
 %option noyywrap yylineno
 
 %{
-    #include "include/creol/ast.hh"
-    #include "include/creol/cli.hh"
+    #include "include/kriol/ast.hh"
+    #include "include/kriol/cli.hh"
 
     #include <string>
     #include <cstdio>
@@ -75,7 +75,7 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 {STRING}        SAVE_TOKEN;   return STR_LIT;
 
 . {
-    creol::cli::PrintErr(
+    kriol::cli::PrintErr(
         "Unknown token " + std::string(yytext) +
         " at line " + std::to_string(yylineno)
     );

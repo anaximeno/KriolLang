@@ -1,6 +1,6 @@
-# :stars: CreolLang
+# :stars: KriolLang
 
-**CreolLang** or **Creol** is a programming language based on the **Cape Verdian Creole**. It was made to be easy for anyone who understands Cape Verdean Creole while keeping the same versatility as some other languages, such as C, Go, and Rust.
+**KriolLang** or **Kriol** is a programming language based on the **Cape Verdian Creole**. It was made to be easy for anyone who understands Cape Verdean Creole while keeping the same versatility as some other languages, such as C, Go, and Rust.
 
 ### Project status
 
@@ -10,9 +10,9 @@ Under development.
 
 The syntax of this programming language was initially based on C, Go, and Rust, but other programming languages such as Liquid played a good role in the initial design.
 
-For more concrete specifications about the language, you are recommended to read the [CreolLang Language Specification](./docs/creol-lang-spec.md).
+For more concrete specifications about the language, you are recommended to read the [KriolLang Language Specification](./docs/kriol-lang-spec.md).
 
-The file extension of the CreolLang programming language is **.kl** (representing the word **Kriol** or **Kriolu** which is how Creol or Creole is pronounced in Cape Verdian's Creole) and the compiler's name is **creol**.
+The file extension of the KriolLang programming language is **.kl** (representing the word **Kriol** or **Kriolu** which is how Kriol or Creole is pronounced in Cape Verdian's Creole) and the compiler's name is **kriol**.
 
 ## Installation
 
@@ -38,10 +38,10 @@ For a release build use:
 make release
 ```
 
-The result of the compilation will be an executable named **creol** which you can execute using:
+The result of the compilation will be an executable named **kriol** which you can execute using:
 
 ```bash
-./creol
+./kriol
 ```
 
 ## Usage
@@ -49,7 +49,7 @@ The result of the compilation will be an executable named **creol** which you ca
 The first thing to do after compiling the compiler is to execute the help command:
 
 ```bash
-./creol --help
+./kriol --help
 ```
 
 After executing that command you may see the usage section and some of its options.
@@ -57,7 +57,7 @@ After executing that command you may see the usage section and some of its optio
 An example of how it could be used is to compile one of the examples files in the examples folder:
 
 ```bash
-./creol examples/example03.kl
+./kriol examples/example03.kl
 ```
 
 You may see the code in example03.crl converted to the C language code on the terminal.
@@ -65,7 +65,7 @@ You may see the code in example03.crl converted to the C language code on the te
 To build the code you should use the **-b** or **--build** flag:
 
 ```bash
-./creol examples/example03.kl -b
+./kriol examples/example03.kl -b
 ```
 
 Then execute the compiled code with:
@@ -88,4 +88,4 @@ TODO...
 
 ## License
 
-All the code and specifications of the CreolLang programming language are currently under the [MIT License](./LICENSE).
+All the code and specifications of the KriolLang programming language are currently under the [MIT License](./LICENSE).
