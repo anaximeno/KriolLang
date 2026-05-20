@@ -21,7 +21,7 @@ It isn't installable on any OS yet, but it still can be tested using a Unix-base
 If you are on a Debian (or Ubuntu) based Linux operating system you can install the dependencies using the following command:
 
 ```bash
-apt install make flex bison g++ clang
+apt install make flex bison g++ clang llvm llvm-dev
 ```
 
 NOTE: now pre-generated parser and scanner codes are provided in the repository, so, **flex** and **bison** can be omitted from the installation above, but if you are planning to make changes to the parser or scanner rules, they will still be necessary.
