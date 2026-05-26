@@ -1854,7 +1854,7 @@ yyreduce:
 
   case 6: /* type_specifier: TYPE_BOOL  */
 #line 79 "rules/parser.y"
-                           { (yyval.string) = new std::string("unsigned short"); delete (yyvsp[0].string); }
+                           { (yyval.string) = (yyvsp[0].string); }
 #line 1859 "parser.cc"
     break;
 

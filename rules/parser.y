@@ -76,7 +76,7 @@ program : statements { *Program = $1; }
 
 type_specifier : TYPE_NUM { $$ = $1; }
                | TYPE_VOID { $$ = $1; }
-               | TYPE_BOOL { $$ = new std::string("unsigned short"); delete $1; }
+               | TYPE_BOOL { $$ = $1; }
                | TYPE_NTER { $$ = $1; }
                | TYPE_TEXTU { $$ = $1; }
                ;
