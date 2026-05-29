@@ -1,6 +1,6 @@
 inpristan "stdio.h"
 
-num min(num a, num b) {
+nter min(nter a, nter b) {
     si a < b {
         divolvi a;
     } sinon {
@@ -9,7 +9,7 @@ num min(num a, num b) {
 }
 
 vaziu inisiu() {
-    num m = min(12, 20);
+    nter m = min(12, 20);
     mostra(m);
 }
 

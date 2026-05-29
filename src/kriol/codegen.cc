@@ -1,4 +1,4 @@
-#include "../../include/kriol/llvm_codegen.hh"
+#include "../../include/kriol/codegen.hh"
 
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/LegacyPassManager.h>
@@ -10,6 +10,8 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Host.h>
 #include <llvm/MC/TargetRegistry.h>
+
+#include <llvm/Support/Program.h>
 
 #include <stdexcept>
 #include <cstdlib>
@@ -40,7 +42,7 @@ static std::string processEscapes(const std::string& raw) {
 
 using namespace kriol::ast;
 
-LLVMCodeGenVisitor::LLVMCodeGenVisitor(const std::string& moduleName)
+CodeGenVisitor::CodeGenVisitor(const std::string& moduleName)
     : Mod(std::make_unique<llvm::Module>(moduleName, Context)),
       Builder(std::make_unique<llvm::IRBuilder<>>(Context))
 {
@@ -51,7 +53,7 @@ LLVMCodeGenVisitor::LLVMCodeGenVisitor(const std::string& moduleName)
     llvm::InitializeAllAsmPrinters();
 }
 
-llvm::Type* LLVMCodeGenVisitor::mapType(const std::string& t) {
+llvm::Type* CodeGenVisitor::mapType(const std::string& t) {
     if (t == "num")   return llvm::Type::getDoubleTy(Context);
     if (t == "nter")  return llvm::Type::getInt64Ty(Context);
     if (t == "bool")  return llvm::Type::getInt1Ty(Context);
@@ -60,13 +62,13 @@ llvm::Type* LLVMCodeGenVisitor::mapType(const std::string& t) {
     return llvm::Type::getDoubleTy(Context); // default
 }
 
-llvm::AllocaInst* LLVMCodeGenVisitor::createEntryAlloca(
+llvm::AllocaInst* CodeGenVisitor::createEntryAlloca(
         llvm::Function* fn, const std::string& name, llvm::Type* ty) {
     llvm::IRBuilder<> tmp(&fn->getEntryBlock(), fn->getEntryBlock().begin());
     return tmp.CreateAlloca(ty, nullptr, name);
 }
 
-llvm::AllocaInst* LLVMCodeGenVisitor::lookupVar(const std::string& name) {
+llvm::AllocaInst* CodeGenVisitor::lookupVar(const std::string& name) {
     for (auto it = Scopes.rbegin(); it != Scopes.rend(); ++it) {
         auto found = it->find(name);
         if (found != it->end()) return found->second;
@@ -74,7 +76,7 @@ llvm::AllocaInst* LLVMCodeGenVisitor::lookupVar(const std::string& name) {
     return nullptr;
 }
 
-llvm::Function* LLVMCodeGenVisitor::getOrDeclarePrintf() {
+llvm::Function* CodeGenVisitor::getOrDeclarePrintf() {
     if (auto* fn = Mod->getFunction("printf")) return fn;
     auto* ptrTy  = llvm::PointerType::getUnqual(Context);
     auto* ftype  = llvm::FunctionType::get(
@@ -83,13 +85,13 @@ llvm::Function* LLVMCodeGenVisitor::getOrDeclarePrintf() {
         ftype, llvm::Function::ExternalLinkage, "printf", *Mod);
 }
 
-llvm::Value* LLVMCodeGenVisitor::coerceToDouble(llvm::Value* v) {
+llvm::Value* CodeGenVisitor::coerceToDouble(llvm::Value* v) {
     if (v->getType()->isIntegerTy())
         return Builder->CreateSIToFP(v, llvm::Type::getDoubleTy(Context));
     return v;
 }
 
-llvm::Value* LLVMCodeGenVisitor::toBool(llvm::Value* v) {
+llvm::Value* CodeGenVisitor::toBool(llvm::Value* v) {
     if (v->getType()->isIntegerTy(1)) return v;
     if (v->getType()->isDoubleTy())
         return Builder->CreateFCmpONE(
@@ -98,14 +100,14 @@ llvm::Value* LLVMCodeGenVisitor::toBool(llvm::Value* v) {
         v, llvm::ConstantInt::get(v->getType(), 0), "booltmp");
 }
 
-std::string LLVMCodeGenVisitor::emitIR() {
+std::string CodeGenVisitor::emitIR() {
     std::string buf;
     llvm::raw_string_ostream os(buf);
     Mod->print(os, nullptr);
     return buf;
 }
 
-void LLVMCodeGenVisitor::emitNative(const std::string& outputPath) {
+void CodeGenVisitor::emitNative(const std::string& outputPath) {
     auto triple = llvm::sys::getDefaultTargetTriple();
     Mod->setTargetTriple(triple);
 
@@ -132,14 +134,35 @@ void LLVMCodeGenVisitor::emitNative(const std::string& outputPath) {
     pm.run(*Mod);
     dest.flush();
 
-    std::string linkCmd = "cc " + objPath + " -o " + outputPath + " -lm";
-    if (std::system(linkCmd.c_str()) != 0)
-        throw std::runtime_error("Linking failed");
+    auto ccPath = llvm::sys::findProgramByName("cc");
+
+    if (!ccPath)
+        throw std::runtime_error("Cannot find 'cc': " + ccPath.getError().message());
+
+    std::vector<llvm::StringRef> linkArgs = {
+        *ccPath, objPath, "-o", outputPath, "-lm"
+    };
+
+    std::string linkErr;
+    bool execFailed = false;
+    int ret = llvm::sys::ExecuteAndWait(
+        *ccPath,
+        linkArgs,
+        /*Env=*/std::nullopt,
+        /*Redirects=*/{},
+        /*SecondsToWait=*/0,
+        /*MemoryLimit=*/0,
+        &linkErr,
+        &execFailed
+    );
+
+    if (execFailed || ret != 0)
+        throw std::runtime_error("Linking failed" + (linkErr.empty() ? "" : ": " + linkErr));
 
     std::remove(objPath.c_str());
 }
 
-void LLVMCodeGenVisitor::visit(VarDeclSttmt& node) {
+void CodeGenVisitor::visit(VarDeclSttmt& node) {
     TypeTable[node.Name] = node.Type;
     if (node.IsParam) return; // params are handled inside FuncDeclSttmt
 
@@ -154,18 +177,18 @@ void LLVMCodeGenVisitor::visit(VarDeclSttmt& node) {
     LastValue = nullptr;
 }
 
-void LLVMCodeGenVisitor::visit(BlockSttmt& node) {
+void CodeGenVisitor::visit(BlockSttmt& node) {
     pushScope();
     for (auto& s : node.SttmtList)
         if (s) s->accept(*this);
     popScope();
 }
 
-void LLVMCodeGenVisitor::visit(FuncArgs& node) {
+void CodeGenVisitor::visit(FuncArgs& node) {
     // Handled inside FuncDeclSttmt
 }
 
-void LLVMCodeGenVisitor::visit(FuncDeclSttmt& node) {
+void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
     std::string name = isMain ? "main" : node.Name;
 
@@ -213,13 +236,23 @@ void LLVMCodeGenVisitor::visit(FuncDeclSttmt& node) {
             Builder->CreateRet(llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), 0));
         else if (retTy->isVoidTy())
             Builder->CreateRetVoid();
+        else {
+            // If every branch already returned, the current block is dead code
+            // with no predecessors (but it still needs a valid LLVM terminator).
+            llvm::BasicBlock* cur = Builder->GetInsertBlock();
+            bool isDeadBlock = (cur != &fn->getEntryBlock()) && cur->hasNPredecessors(0);
+            if (isDeadBlock)
+                Builder->CreateUnreachable();
+            else
+                throw std::runtime_error("Non-void function '" + node.Name + "' has no return statement");
+        }
     }
 
     llvm::verifyFunction(*fn);
     CurrentFunction = nullptr;
 }
 
-void LLVMCodeGenVisitor::visit(IfSttmt& node) {
+void CodeGenVisitor::visit(IfSttmt& node) {
     node.Cond->accept(*this);
     llvm::Value* cond = toBool(LastValue);
 
@@ -250,7 +283,7 @@ void LLVMCodeGenVisitor::visit(IfSttmt& node) {
     LastValue = nullptr;
 }
 
-void LLVMCodeGenVisitor::visit(WhileSttmt& node) {
+void CodeGenVisitor::visit(WhileSttmt& node) {
     auto* fn     = Builder->GetInsertBlock()->getParent();
     auto* condBB = llvm::BasicBlock::Create(Context, "while.cond", fn);
     auto* bodyBB = llvm::BasicBlock::Create(Context, "while.body", fn);
@@ -275,14 +308,14 @@ void LLVMCodeGenVisitor::visit(WhileSttmt& node) {
     LastValue = nullptr;
 }
 
-void LLVMCodeGenVisitor::visit(JumpSttmt& node) {
+void CodeGenVisitor::visit(JumpSttmt& node) {
     if (node.Name == "break" && LoopExit)
         Builder->CreateBr(LoopExit);
     else if (node.Name == "continue" && LoopContinue)
         Builder->CreateBr(LoopContinue);
 }
 
-void LLVMCodeGenVisitor::visit(ReturnSttmt& node) {
+void CodeGenVisitor::visit(ReturnSttmt& node) {
     if (node.ReturnValue) {
         node.ReturnValue->accept(*this);
         Builder->CreateRet(LastValue);
@@ -292,11 +325,11 @@ void LLVMCodeGenVisitor::visit(ReturnSttmt& node) {
     LastValue = nullptr;
 }
 
-void LLVMCodeGenVisitor::visit(FuncCallArgs& node) {
+void CodeGenVisitor::visit(FuncCallArgs& node) {
     // Handled inside FunCallExpr
 }
 
-void LLVMCodeGenVisitor::visit(FunCallExpr& node) {
+void CodeGenVisitor::visit(FunCallExpr& node) {
     auto* fn = Mod->getFunction(node.Name);
     if (!fn) { LastValue = nullptr; return; }
 
@@ -310,7 +343,7 @@ void LLVMCodeGenVisitor::visit(FunCallExpr& node) {
     LastValue = Builder->CreateCall(fn, callArgs);
 }
 
-void LLVMCodeGenVisitor::visit(BinExpr& node) {
+void CodeGenVisitor::visit(BinExpr& node) {
     node.LHS->accept(*this);
     llvm::Value* lhs = LastValue;
     node.RHS->accept(*this);
@@ -337,7 +370,7 @@ void LLVMCodeGenVisitor::visit(BinExpr& node) {
     else LastValue = nullptr;
 }
 
-void LLVMCodeGenVisitor::visit(LiteralExpr& node) {
+void CodeGenVisitor::visit(LiteralExpr& node) {
     const auto& t = node.Type;
     const auto& v = node.Value;
 
@@ -359,22 +392,22 @@ void LLVMCodeGenVisitor::visit(LiteralExpr& node) {
     }
 }
 
-void LLVMCodeGenVisitor::visit(ExprSttmt& node) {
+void CodeGenVisitor::visit(ExprSttmt& node) {
     if (node.Expression) node.Expression->accept(*this);
     LastValue = nullptr;
 }
 
-void LLVMCodeGenVisitor::visit(IdentExpr& node) {
+void CodeGenVisitor::visit(IdentExpr& node) {
     auto* alloca = lookupVar(node.Name);
     if (!alloca) { LastValue = nullptr; return; }
     LastValue = Builder->CreateLoad(alloca->getAllocatedType(), alloca, node.Name);
 }
 
-void LLVMCodeGenVisitor::visit(ParExpr& node) {
+void CodeGenVisitor::visit(ParExpr& node) {
     if (node.Content) node.Content->accept(*this);
 }
 
-void LLVMCodeGenVisitor::visit(AssignExpr& node) {
+void CodeGenVisitor::visit(AssignExpr& node) {
     if (node.Assigned) node.Assigned->accept(*this);
     llvm::Value* val = LastValue;
 
@@ -396,7 +429,7 @@ void LLVMCodeGenVisitor::visit(AssignExpr& node) {
     LastValue = val;
 }
 
-void LLVMCodeGenVisitor::visit(ForSttmt& node) {
+void CodeGenVisitor::visit(ForSttmt& node) {
     auto* fn      = Builder->GetInsertBlock()->getParent();
     auto* condBB  = llvm::BasicBlock::Create(Context, "for.cond",  fn);
     auto* bodyBB  = llvm::BasicBlock::Create(Context, "for.body",  fn);
@@ -432,7 +465,7 @@ void LLVMCodeGenVisitor::visit(ForSttmt& node) {
     LastValue = nullptr;
 }
 
-void LLVMCodeGenVisitor::visit(MostraFunCallExpr& node) {
+void CodeGenVisitor::visit(MostraFunCallExpr& node) {
     if (!node.Args || node.Args->Args.empty()) return;
     auto& args = node.Args->Args;
 
@@ -480,6 +513,6 @@ void LLVMCodeGenVisitor::visit(MostraFunCallExpr& node) {
     LastValue = nullptr;
 }
 
-void LLVMCodeGenVisitor::visit(ImportSttmt& node) {
+void CodeGenVisitor::visit(ImportSttmt& node) {
     // C #include directives have no LLVM IR equivalent; skipped.
 }

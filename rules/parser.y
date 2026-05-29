@@ -1,7 +1,6 @@
 %{
     #include "include/kriol/ast.hh"
     #include "include/kriol/cli.hh"
-    #include "include/kriol/codegen.hh"
 
     #include <cstdio>
     #include <cstdlib>

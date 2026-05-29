@@ -1,0 +1,5 @@
+// mostra with string literals.
+vaziu inisiu() {
+    mostra("Ola, Mundu!\n");
+    mostra("Kriol lang\n");
+}

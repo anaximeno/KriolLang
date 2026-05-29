@@ -1,0 +1,14 @@
+// Regression: non-void function with full if/else coverage must compile without error.
+// This previously triggered a false positive in the LLVM codegen.
+num mod(num x) {
+    si x > 0 {
+        divolvi x;
+    } sinon {
+        divolvi 0.0 - x;
+    }
+}
+
+vaziu inisiu() {
+    mostra(mod(3.0));
+    mostra(mod(0.0 - 5.0));
+}

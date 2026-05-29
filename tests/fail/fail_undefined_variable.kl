@@ -1,0 +1,5 @@
+// ERROR: variable used before it is declared.
+vaziu inisiu() {
+    mostra(x);
+    nter x = 10;
+}

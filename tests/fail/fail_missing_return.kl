@@ -1,0 +1,8 @@
+// ERROR: non-void function that never returns.
+num sen_retornu() {
+    nter x = 42;
+}
+
+vaziu inisiu() {
+    mostra(sen_retornu());
+}

@@ -1,0 +1,7 @@
+// For loop counting up.
+vaziu inisiu() {
+    nter i = 0;
+    pa i = 0; i < 5; i = i + 1 {
+        mostra(i);
+    }
+}

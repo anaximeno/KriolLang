@@ -1,0 +1,14 @@
+// While loop with break and continue.
+vaziu inisiu() {
+    nter i = 0;
+    nkuantu i < 10 {
+        i = i + 1;
+        si i == 3 {
+            kontinua;
+        }
+        si i == 7 {
+            para;
+        }
+        mostra(i);
+    }
+}

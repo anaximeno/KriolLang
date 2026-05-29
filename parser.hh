@@ -105,7 +105,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 19 "rules/parser.y"
+#line 18 "rules/parser.y"
 
     int token;
     std::string* integer;

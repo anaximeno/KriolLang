@@ -1,0 +1,4 @@
+// ERROR: kontinua (continue) used outside any loop.
+vaziu inisiu() {
+    kontinua;
+}

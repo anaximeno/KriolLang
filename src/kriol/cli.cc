@@ -1,7 +1,7 @@
 #include "../../include/kriol/cli.hh"
 #include "../../include/kriol/ast.hh"
 #include "../../include/kriol/codegen.hh"
-#include "../../include/kriol/llvm_codegen.hh"
+#include "../../include/kriol/sema.hh"
 #include "../../include/kriol/cnst.hh"
 
 #include "../../include/external/argparse.hpp"
@@ -27,7 +27,7 @@ extern int yyparse(kriol::ast::BlockSttmt** Program);
 
 void cli::PrintErr(std::string message)
 {
-    std::cerr << "Kriol: Err: " << message << std::endl;
+    std::cerr << KL_STANDARD_NAME << ": Err: " << message << std::endl;
 }
 
 void cli::PrintErr(std::string message, int exitNum)
@@ -67,11 +67,6 @@ void cli::Compiler::DefineArgs(void)
     Parser->add_argument("-o", "--output")
         .help("Option used to specify the name of the output file.")
         .nargs(1);
-
-    Parser->add_argument("--transpile-c")
-        .help("Transpile to C and print to stdout (or -o file) instead of compiling natively.")
-        .default_value(false)
-        .implicit_value(true);
 
     Parser->add_argument("--emit-ir")
         .help("Emit LLVM IR text to stdout (or -o file) instead of compiling natively.")
@@ -119,7 +114,6 @@ void cli::Compiler::ParseArgs(const int argc, const char *const *argv)
         Args.outfile = "";
     }
 
-    Args.transpileToC         = Parser->get<bool>("--transpile-c");
     Args.emitIR               = Parser->get<bool>("--emit-ir");
     Args.shouldCheckExtension = !Parser->get<bool>("--ignore-extension");
 }
@@ -197,48 +191,26 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
     ast::BlockSttmt *ProgramAST = KriolLangParserWrapper::ParseCode(Args.filename, true);
     std::unique_ptr<ast::BlockSttmt> ProgramNode(ProgramAST);
 
-    if (Args.transpileToC)
+    if (ProgramNode)
     {
-        std::string GeneratedCode;
-        try
+        kriol::sema::SemanticAnalyzer sema;
+        sema.Check(ProgramNode.get());
+        if (sema.HasErrors())
         {
-            std::stringstream ss;
-            ast::CodeGenVisitor visitor(ss);
-            if (ProgramNode) ProgramNode->accept(visitor);
-            GeneratedCode = ss.str();
+            for (const auto& err : sema.GetErrors())
+                cli::PrintErr(err);
+            exit(1);
         }
-        catch (std::exception &err)
-        {
-            cli::PrintErr(err.what(), 1);
-        }
-
-        if (system("which clang-format > /dev/null 2>&1") == 0)
-        {
-            std::string fmtFile = ".kriolfmt-" + ConvertToHex(Args.filename) + ".tmp.c";
-            SaveCodeToFile(GeneratedCode, fmtFile);
-            system(("clang-format -i " + fmtFile).c_str());
-            std::ifstream fmtIn(fmtFile);
-            GeneratedCode = std::string(
-                std::istreambuf_iterator<char>(fmtIn),
-                std::istreambuf_iterator<char>());
-            if (fs::exists(fmtFile)) fs::remove(fmtFile);
-        }
-
-        if (Args.outfile != "")
-            SaveCodeToFile(GeneratedCode, Args.outfile);
-        else
-            std::cout << GeneratedCode << std::endl;
-        return;
     }
 
     try
     {
-        ast::LLVMCodeGenVisitor llvmVisitor(Args.filename);
-        if (ProgramNode) ProgramNode->accept(llvmVisitor);
+        ast::CodeGenVisitor codegenVisitor(Args.filename);
+        if (ProgramNode) ProgramNode->accept(codegenVisitor);
 
         if (Args.emitIR)
         {
-            std::string ir = llvmVisitor.emitIR();
+            std::string ir = codegenVisitor.emitIR();
             if (Args.outfile != "")
                 SaveCodeToFile(ir, Args.outfile);
             else
@@ -247,7 +219,7 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
         else
         {
             std::string outfile = Args.outfile != "" ? Args.outfile : "a.out";
-            llvmVisitor.emitNative(outfile);
+            codegenVisitor.emitNative(outfile);
         }
     }
     catch (std::exception &err)

@@ -48,7 +48,6 @@ namespace kriol
             {
                 std::string filename;
                 std::string outfile;
-                bool transpileToC;
                 bool emitIR;
                 bool shouldCheckExtension;
             } Args;

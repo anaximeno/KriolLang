@@ -21,16 +21,16 @@ DBG_FLAGS = $(FLAGS) -g -Wall
 
 RLS_FLAGS = $(FLAGS) -O3 -DNDEBUG
 
-OBJS = main.o ast.o cli.o llvm_codegen.o parser.o scanner.o
+OBJS = main.o cli.o sema.o codegen.o parser.o scanner.o
 
 # Sources that must NOT see LLVM headers (bison/flex generated code has
 # namespace-level std:: references that clash with LLVM's extra defines)
 SRCS = main.cpp \
-	   src/kriol/ast.cc \
 	   src/kriol/cli.cc \
+	   src/kriol/sema.cc \
 	   parser.cc scanner.cc
 
-LLVM_SRC = src/kriol/llvm_codegen.cc
+LLVM_SRC = src/kriol/codegen.cc
 
 # The default build is debug.
 # Change to release if wanted.
@@ -54,10 +54,10 @@ rls-obj: $(SRCS) $(LLVM_SRC)
 release: rls-obj
 	$(CC) -o $(OUTPUT) $(RLS_FLAGS) $(OBJS) $(LLVM_LDFLAGS)
 
-parser.cc parser.hh:
+parser.cc parser.hh: rules/parser.y
 	bison -dt rules/parser.y -o parser.cc
 
-scanner.cc:
+scanner.cc: rules/scanner.l
 	flex -o scanner.cc rules/scanner.l
 
 clean:
@@ -67,7 +67,7 @@ test: kriol
 	@echo "\n~~ Running tests ~~\n"; \
 	pass=0; fail=0; \
 	for f in $(EXAMPLES); do \
-		printf "  %-38s" "$$f"; \
+		printf "  %-44s" "$$f"; \
 		tmpbin=$$(mktemp /tmp/kriol_XXXX); \
 		if ./kriol "$$f" -o "$$tmpbin" 2>/dev/null && \
 		   timeout 5 "$$tmpbin" > /dev/null 2>&1; then \
@@ -77,5 +77,30 @@ test: kriol
 		fi; \
 		rm -f "$$tmpbin"; \
 	done; \
+	if [ -d tests/pass ]; then \
+		for f in tests/pass/*.kl; do \
+			[ -f "$$f" ] || continue; \
+			printf "  %-44s" "$$f"; \
+			tmpbin=$$(mktemp /tmp/kriol_XXXX); \
+			if ./kriol "$$f" -o "$$tmpbin" 2>/dev/null && \
+			   timeout 5 "$$tmpbin" > /dev/null 2>&1; then \
+				echo " PASS"; pass=$$((pass+1)); \
+			else \
+				echo " FAIL"; fail=$$((fail+1)); \
+			fi; \
+			rm -f "$$tmpbin"; \
+		done; \
+	fi; \
+	if [ -d tests/fail ]; then \
+		for f in tests/fail/*.kl; do \
+			[ -f "$$f" ] || continue; \
+			printf "  %-44s" "$$f"; \
+			if ! ./kriol "$$f" -o /dev/null 2>/dev/null; then \
+				echo " PASS (rejected)"; pass=$$((pass+1)); \
+			else \
+				echo " FAIL (should have been rejected)"; fail=$$((fail+1)); \
+			fi; \
+		done; \
+	fi; \
 	echo "\n  $$pass/$$((pass+fail)) passed\n"; \
 	[ $$fail -eq 0 ]

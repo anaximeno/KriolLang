@@ -1,0 +1,9 @@
+// User-defined function called from entry point.
+num quad(num x) {
+    divolvi x * x;
+}
+
+vaziu inisiu() {
+    num r = quad(4.0);
+    mostra(r);
+}
