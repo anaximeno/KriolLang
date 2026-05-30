@@ -7,11 +7,6 @@ CC_C = clang
 
 OUTPUT = kriol
 
-EXAMPLES = examples/hello-world.kl \
-	   examples/example01.kl \
-	   examples/example02.kl \
-	   examples/example03.kl
-
 LLVM_CXXFLAGS := $(filter-out -fno-exceptions -std=%, $(shell llvm-config --cxxflags))
 LLVM_LDFLAGS  := $(shell llvm-config --ldflags --libs core native --system-libs 2>/dev/null)
 
@@ -75,7 +70,7 @@ clean:
 test: kriol
 	@echo "\n~~ Running tests ~~\n"; \
 	pass=0; fail=0; \
-	for f in $(EXAMPLES); do \
+	for f in examples/*.kl; do \
 		printf "  %-44s" "$$f"; \
 		tmpbin=$$(mktemp /tmp/kriol_XXXX); \
 		if ./kriol "$$f" -o "$$tmpbin" 2>/dev/null && \
