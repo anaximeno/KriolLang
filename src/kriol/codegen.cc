@@ -76,6 +76,11 @@ llvm::AllocaInst* CodeGenVisitor::lookupVar(const std::string& name) {
     return nullptr;
 }
 
+llvm::GlobalVariable* CodeGenVisitor::lookupGlobal(const std::string& name) {
+    auto it = GlobalVars.find(name);
+    return it != GlobalVars.end() ? it->second : nullptr;
+}
+
 llvm::Function* CodeGenVisitor::getOrDeclarePrintf() {
     if (auto* fn = Mod->getFunction("printf")) return fn;
     auto* ptrTy  = llvm::PointerType::getUnqual(Context);
@@ -168,7 +173,32 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     TypeTable[node.Name] = node.Type;
     if (node.IsParam) return; // params are handled inside FuncDeclSttmt
 
-    llvm::Type*       ty     = mapType(node.Type);
+    llvm::Type* ty = mapType(node.Type);
+
+    // Module scope: CurrentFunction is null when we're outside any function
+    if (!CurrentFunction) {
+        llvm::Constant* init = llvm::Constant::getNullValue(ty);
+
+        auto* gv = new llvm::GlobalVariable(
+            *Mod,
+            ty,
+            /*isConstant=*/false,
+            llvm::GlobalValue::InternalLinkage,
+            init,
+            node.Name
+        );
+
+        GlobalVars[node.Name] = gv;
+
+        // Defer any initializer expression; emitted as stores at the top of inisiu
+        if (node.Value)
+            DeferredGlobalInits.push_back({gv, node.Value.get()});
+
+        LastValue = nullptr;
+        return;
+    }
+
+    // Function scope
     llvm::AllocaInst* alloca = createEntryAlloca(CurrentFunction, node.Name, ty);
     declareVar(node.Name, alloca);
 
@@ -227,6 +257,15 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
             Builder->CreateStore(&llvmArg, a);
             declareVar(p->Name, a);
         }
+    }
+
+    // Emit deferred global initializers at the top of inisiu (main)
+    if (isMain && !DeferredGlobalInits.empty()) {
+        for (auto& di : DeferredGlobalInits) {
+            di.InitExpr->accept(*this);
+            if (LastValue) Builder->CreateStore(LastValue, di.Var);
+        }
+        DeferredGlobalInits.clear();
     }
 
     if (node.Body) node.Body->accept(*this);
@@ -401,8 +440,16 @@ void CodeGenVisitor::visit(ExprSttmt& node) {
 
 void CodeGenVisitor::visit(IdentExpr& node) {
     auto* alloca = lookupVar(node.Name);
-    if (!alloca) { LastValue = nullptr; return; }
-    LastValue = Builder->CreateLoad(alloca->getAllocatedType(), alloca, node.Name);
+    if (alloca) {
+        LastValue = Builder->CreateLoad(alloca->getAllocatedType(), alloca, node.Name);
+        return;
+    }
+    auto* gv = lookupGlobal(node.Name);
+    if (gv) {
+        LastValue = Builder->CreateLoad(gv->getValueType(), gv, node.Name);
+        return;
+    }
+    LastValue = nullptr;
 }
 
 void CodeGenVisitor::visit(ParExpr& node) {
@@ -427,6 +474,21 @@ void CodeGenVisitor::visit(AssignExpr& node) {
             else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, val) : Builder->CreateSDiv(cur, val);
         }
         Builder->CreateStore(val, alloca);
+        LastValue = val;
+        return;
+    }
+
+    auto* gv = lookupGlobal(ident->Name);
+    if (gv) {
+        if (node.AssignOp != "=") {
+            llvm::Value* cur = Builder->CreateLoad(gv->getValueType(), gv);
+            bool isFloat = cur->getType()->isDoubleTy();
+            if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, val) : Builder->CreateAdd(cur, val);
+            else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, val) : Builder->CreateSub(cur, val);
+            else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, val) : Builder->CreateMul(cur, val);
+            else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, val) : Builder->CreateSDiv(cur, val);
+        }
+        Builder->CreateStore(val, gv);
     }
     LastValue = val;
 }

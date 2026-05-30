@@ -38,14 +38,26 @@ namespace ast {
         // Scope stack: variable name -> AllocaInst*
         std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> Scopes;
 
+        // Module-scope globals: variable name -> GlobalVariable*
+        std::unordered_map<std::string, llvm::GlobalVariable*> GlobalVars;
+
+        // Non-constant global initializers deferred until inisiu's preamble
+        struct DeferredGlobalInit {
+            llvm::GlobalVariable*  Var;
+            // non-owning; AST outlives codegen
+            kriol::ast::Expr*      InitExpr;
+        };
+        std::vector<DeferredGlobalInit> DeferredGlobalInits;
+
         // Type table: variable name -> Kriol type string
         std::unordered_map<std::string, std::string> TypeTable;
 
-        llvm::Type*       mapType(const std::string& kriolType);
-        llvm::AllocaInst* createEntryAlloca(llvm::Function* fn,
-                                            const std::string& name,
-                                            llvm::Type* ty);
-        llvm::AllocaInst* lookupVar(const std::string& name);
+        llvm::Type*          mapType(const std::string& kriolType);
+        llvm::AllocaInst*    createEntryAlloca(llvm::Function* fn,
+                                               const std::string& name,
+                                               llvm::Type* ty);
+        llvm::AllocaInst*    lookupVar(const std::string& name);
+        llvm::GlobalVariable* lookupGlobal(const std::string& name);
 
         void pushScope() { Scopes.push_back({}); }
         void popScope()  { if (!Scopes.empty()) Scopes.pop_back(); }
