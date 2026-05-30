@@ -289,7 +289,13 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
         }
     }
 
-    llvm::verifyFunction(*fn);
+    auto verificationFailed = llvm::verifyFunction(*fn);
+
+    if (verificationFailed) {
+        fn->print(llvm::errs());
+        throw std::runtime_error("Function verification failed for '" + node.Name + "'");
+    }
+
     CurrentFunction = nullptr;
 }
 
