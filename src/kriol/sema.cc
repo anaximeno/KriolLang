@@ -155,7 +155,7 @@ void SemanticAnalyzer::visit(IdentExpr& node) {
     // has at least 2 levels: top-level scope + function scope).
     if (SymbolScopes.size() >= 2) {
         if (!lookupVar(node.Name))
-            addError("undefined variable '" + node.Name + "'");
+            addError("undefined variable name '" + node.Name + "'");
     }
 }
 
@@ -184,7 +184,7 @@ void SemanticAnalyzer::visit(MostraFunCallExpr& node) {
 }
 
 void SemanticAnalyzer::visit(ImportSttmt& node) {
-    // No semantic checks for import directives
+    throw std::runtime_error("'inpristan' (import) statements are not supported yet");
 }
 
 } // namespace sema
