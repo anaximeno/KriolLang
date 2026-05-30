@@ -53,7 +53,7 @@ namespace sema {
         // returning is recognised as a definite return.
         bool blockDefinitelyReturns(ast::BlockSttmt* block) const;
 
-        void addError(const std::string& msg) { Errors.push_back(KL_STANDARD_NAME ": Err: " + msg); }
+        void addError(const std::string& msg) { Errors.push_back(msg); }
 
     public:
         SemanticAnalyzer() = default;

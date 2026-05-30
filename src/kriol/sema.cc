@@ -118,8 +118,12 @@ void SemanticAnalyzer::visit(JumpSttmt& node) {
 }
 
 void SemanticAnalyzer::visit(ReturnSttmt& node) {
+    // Make sure we are not returning a value from a void function
     if (!CurrFuncRetType.empty() && CurrFuncRetType == "vaziu" && node.ReturnValue)
         addError("returning a value from void function '" + CurrFuncName + "'");
+    // Make sure we are returning a value from a non-void function
+    if (!CurrFuncRetType.empty() && CurrFuncRetType != "vaziu" && !node.ReturnValue)
+        addError("missing return value in non-void function '" + CurrFuncName + "'");
     if (node.ReturnValue) node.ReturnValue->accept(*this);
 }
 
