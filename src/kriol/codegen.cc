@@ -92,6 +92,8 @@ llvm::Value* CodeGenVisitor::coerceToDouble(llvm::Value* v) {
 }
 
 llvm::Value* CodeGenVisitor::toBool(llvm::Value* v) {
+    if (v->getType()->isPointerTy())
+        throw std::runtime_error("Cannot use non truthy value as a condition");
     if (v->getType()->isIntegerTy(1)) return v;
     if (v->getType()->isDoubleTy())
         return Builder->CreateFCmpONE(
