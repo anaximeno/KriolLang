@@ -1,7 +1,6 @@
 %{
     #include "include/kriol/ast.hh"
     #include "include/kriol/cli.hh"
-    #include "include/kriol/codegen.hh"
 
     #include <cstdio>
     #include <cstdlib>
@@ -46,6 +45,7 @@
 %token<token>  DIVOLVI PA STRUT
 %token<token>  NKUANTU SI SINON IMPRISTAN
 %token<token> PARA CONTINUA DOT RPAR LPAR
+%token<token> FN
 
 %type<expr> expression assignment_expression function_call primary_expression
             constant_expression constant logical_or_expressions logical_and_expressions
@@ -76,7 +76,7 @@ program : statements { *Program = $1; }
 
 type_specifier : TYPE_NUM { $$ = $1; }
                | TYPE_VOID { $$ = $1; }
-               | TYPE_BOOL { $$ = new std::string("unsigned short"); delete $1; }
+               | TYPE_BOOL { $$ = $1; }
                | TYPE_NTER { $$ = $1; }
                | TYPE_TEXTU { $$ = $1; }
                ;
@@ -155,7 +155,8 @@ assignment_expression : constant_expression { $$ = $1; }
 assignment_operator : ASSIGN { $$ = new std::string("=", 2); }
                     ;
 
-function_declaration : type_specifier declarator LPAR parameter_optional_list RPAR compound_statement { $$ = new ast::FuncDeclSttmt(*$1, *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($6)); delete $1; delete $2; }
+function_declaration : FN declarator LPAR parameter_optional_list RPAR type_specifier compound_statement { $$ = new ast::FuncDeclSttmt(*$6, *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($7)); delete $6; delete $2; }
+                     | FN declarator LPAR parameter_optional_list RPAR compound_statement { $$ = new ast::FuncDeclSttmt("vaziu", *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($6)); delete $2; }
                      ;
 
 parameter_optional_list : parameter_list { $$ = $1; }

@@ -118,7 +118,8 @@ Language specifications for the KriolLang programming language.
 ### Function Statements
 
 ```xml
-<function_declaration> ::= <type_specifier> <declarator> '(' <parameter_optional_list> ')' <compound_statement>
+<function_declaration> ::= T_FN <declarator> '(' <parameter_optional_list> ')' <type_specifier> <compound_statement>
+                         | T_FN <declarator> '(' <parameter_optional_list> ')' <compound_statement>
 
 <parameter_optional_list> ::= <parameter_list>
                             | λ
@@ -181,6 +182,7 @@ Below are the keywords and types in the language mapped to standard C.
 
 | KriolLang   | C Equivalent | Meaning      |
 | ----------- | ------------ | ------------ |
+| fn          | fn           | Function     |
 | num         | double       | Number       |
 | vaziu       | void         | Void         |
 | bool        | bool         | Boolean      |

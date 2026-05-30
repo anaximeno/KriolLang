@@ -96,7 +96,8 @@ extern int yydebug;
     DOT = 297,                     /* DOT  */
     RPAR = 298,                    /* RPAR  */
     LPAR = 299,                    /* LPAR  */
-    UMINUS = 300                   /* UMINUS  */
+    FN = 300,                      /* FN  */
+    UMINUS = 301                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -105,7 +106,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 19 "rules/parser.y"
+#line 18 "rules/parser.y"
 
     int token;
     std::string* integer;
@@ -120,7 +121,7 @@ union YYSTYPE
     kriol::ast::FuncCallArgs* args;
     kriol::ast::LiteralExpr* litexpr;
 
-#line 124 "parser.hh"
+#line 125 "parser.hh"
 
 };
 typedef union YYSTYPE YYSTYPE;

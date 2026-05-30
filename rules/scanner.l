@@ -30,7 +30,10 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 %%
 
 [ \t\n]         /* ignore */;
+"//"[^\n]*      /* single-line comment */;
+"/*"([^*]|\*+[^*/])*\*+"/"  /* multi-line comment */;
 
+"fn"            return TOKENIZE(FN);
 "mostra"        return TOKENIZE(MOSTRA);
 "inpristan"     return TOKENIZE(IMPRISTAN);
 "si"            return TOKENIZE(SI);

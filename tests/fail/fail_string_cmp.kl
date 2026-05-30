@@ -1,0 +1,5 @@
+fn inisiu() {
+    si "yo" {
+        mostra("Hey");
+    }
+}

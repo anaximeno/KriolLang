@@ -48,8 +48,7 @@ namespace kriol
             {
                 std::string filename;
                 std::string outfile;
-                bool shouldBuildOutput;
-                bool shouldFormatOutput;
+                bool emitIR;
                 bool shouldCheckExtension;
             } Args;
 
@@ -66,8 +65,6 @@ namespace kriol
             void DefineArgs(void);
             /// Save the transpiled code into a file
             void SaveCodeToFile(std::string Code, std::string Filename);
-            /// Used to build the resultant code
-            void BuildCode(std::string Code);
         };
     };
 };

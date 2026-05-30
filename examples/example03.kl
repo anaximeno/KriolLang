@@ -1,7 +1,4 @@
-inpristan "stdio.h"
-inpristan "stdbool.h"
-
-vaziu dizenhaLinha(num tamanhu, bool dizenhaLinhaNaFin) {
+fn dizenhaLinha(num tamanhu, bool dizenhaLinhaNaFin) {
     num i;
 
     pa i = 0 ; i < tamanhu ; i = i + 1 {
@@ -13,7 +10,7 @@ vaziu dizenhaLinha(num tamanhu, bool dizenhaLinhaNaFin) {
     }
 }
 
-vaziu mostraMensagem() {
+fn mostraMensagem() {
     num i = 1;
 
     nkuantu i < 10 {
@@ -29,6 +26,6 @@ vaziu mostraMensagem() {
     }
 }
 
-vaziu inisiu() {
+fn inisiu() {
     mostraMensagem();
 }

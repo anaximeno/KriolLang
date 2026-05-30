@@ -1,0 +1,6 @@
+// ERROR: same variable declared twice in the same scope.
+fn inisiu() {
+    nter x = 1;
+    nter x = 2;
+    mostra(x);
+}

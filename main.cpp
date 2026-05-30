@@ -1,4 +1,4 @@
-#include "include/kriol/cnst.hh"
+#include "include/kriol/constants.hh"
 #include "include/kriol/cli.hh"
 
 int main(int argc, const char* const* argv) {

@@ -1,0 +1,4 @@
+// ERROR: returning a value from a void function.
+fn inisiu() {
+    divolvi 5;
+}

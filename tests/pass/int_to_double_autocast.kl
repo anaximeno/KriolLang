@@ -1,0 +1,5 @@
+num dez = 10; // nter literal assigned to num var: should autocast to double
+
+fn inisiu() {
+    mostra(dez);
+}

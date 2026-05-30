@@ -1,9 +1,7 @@
-inpristan "stdio.h"
-
-num soma(num n) {
+fn soma(num n) num {
     num acc = 0;
 
-    num i;
+    nter i;
     pa i = 0 ; i < n ; i = i + 1 {
         acc = acc + i;
     }
@@ -11,6 +9,6 @@ num soma(num n) {
     divolvi acc;
 }
 
-vaziu inisiu() {
+fn inisiu() {
     mostra("Soma ti 10 é igual a %g\n", soma(10));
 }

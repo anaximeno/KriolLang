@@ -1,6 +1,12 @@
-inpristan "stdio.h"
+fn inisiu() {
+    textu mensagem1 = "Kuale, Mundu 1!\n";
+    textu mensagem2 = "Kuale, Mundu 2!\n";
 
-vaziu inisiu() {
-    textu mensagem = "Kuale, Mundu!\n";
-    mostra(mensagem);
+    bool flip = nau;
+
+    si flip {
+        mostra(mensagem2);
+    } sinon {
+        mostra(mensagem1);
+    }
 }

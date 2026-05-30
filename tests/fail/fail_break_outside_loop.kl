@@ -1,0 +1,4 @@
+// ERROR: para (break) used outside any loop.
+fn inisiu() {
+    para;
+}

@@ -6,7 +6,6 @@
 #include <memory>
 #include <utility>
 
-#include "./cbinds.hh"
 
 namespace kriol {
 namespace ast {
@@ -145,7 +144,7 @@ namespace ast {
         std::unique_ptr<Expr> ReturnValue;
 
         ReturnSttmt(std::unique_ptr<Expr> ReturnValue)
-            : JumpSttmt(C_RETURN), ReturnValue(std::move(ReturnValue)) {}
+            : JumpSttmt("return"), ReturnValue(std::move(ReturnValue)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -169,7 +168,7 @@ namespace ast {
     class MostraFunCallExpr : public FunCallExpr {
     public:
         MostraFunCallExpr(std::unique_ptr<FuncCallArgs> Args)
-            : FunCallExpr(C_PRINTF, std::move(Args)) {}
+            : FunCallExpr("printf", std::move(Args)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 

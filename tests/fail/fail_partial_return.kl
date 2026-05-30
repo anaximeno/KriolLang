@@ -1,0 +1,11 @@
+// ERROR: non-void function where only one branch returns.
+fn so_un_ramu(num x) num {
+    si x > 0 {
+        divolvi x;
+    }
+    // missing else branch return
+}
+
+fn inisiu() {
+    mostra(so_un_ramu(1.0));
+}

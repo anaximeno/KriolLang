@@ -1,0 +1,5 @@
+nter dez = 10;
+
+fn inisiu() {
+    mostra(dez);
+}
