@@ -137,8 +137,8 @@ additive_expression : multiplicative_expression { $$ = $1; }
                     ;
 
 multiplicative_expression : unary_expression { $$ = $1; }
-                          | multiplicative_expression MUL primary_expression { auto n = new ast::BinExpr("*", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                          | multiplicative_expression DIV primary_expression { auto n = new ast::BinExpr("/", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                          | multiplicative_expression MUL unary_expression { auto n = new ast::BinExpr("*", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                          | multiplicative_expression DIV unary_expression { auto n = new ast::BinExpr("/", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
                           ;
 
 unary_expression : primary_expression                          { $$ = $1; }
