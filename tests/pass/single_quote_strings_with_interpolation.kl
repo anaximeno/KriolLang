@@ -1,0 +1,6 @@
+// f-strings work with both double and single quote delimiters.
+fn inisiu() {
+    textu nomi = "Joe";
+    textu hello = f'Olá, "{nomi}", Tudo bom?';
+    mostran(hello);
+}

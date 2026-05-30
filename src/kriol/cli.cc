@@ -219,7 +219,7 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
         else
         {
             std::string outfile = Args.outfile != "" ? Args.outfile : "a.out";
-            codegenVisitor.emitNative(outfile);
+            codegenVisitor.emitNative(outfile, argv[0]);
         }
     }
     catch (std::exception &err)

@@ -8,6 +8,6 @@ fn min(nter a, nter b) nter {
 
 fn inisiu() {
     nter m = min(12, 20);
-    mostra(m);
+    mostran(m);
 }
 

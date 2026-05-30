@@ -1,0 +1,11 @@
+// mostra prints different types using runtime helpers.
+fn inisiu() {
+    nter a = 42;
+    num  b = 3.14;
+    bool t = sin;
+    bool f = nau;
+    mostra(a);
+    mostra(b);
+    mostra(t);
+    mostra(f);
+}

@@ -1,0 +1,5 @@
+fn inisiu() {
+    konfirma(sin);
+    konfirma(1 == 1);
+    konfirma(!nau);
+}

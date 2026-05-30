@@ -47,6 +47,7 @@ Language specifications for the KriolLang programming language.
              | T_FLOAT_LIT
              | T_BOOL_LIT
              | T_STR_LIT
+             | T_FSTR_LIT
 
 <identifier> ::= T_IDENT
 
@@ -86,7 +87,7 @@ Language specifications for the KriolLang programming language.
 
 <multiplicative_expression> ::= <unary_expression>
                               | <multiplicative_expression> T_MUL <primary_expression>
-                              | <multiplicative_expression> T_PAV <primary_expression>
+                              | <multiplicative_expression> T_DIV <primary_expression>
 ```
 
 ### Other Expressions
@@ -98,7 +99,8 @@ Language specifications for the KriolLang programming language.
 <constant_expression> ::= <logical_or_expressions>
 
 <unary_expression> ::= <primary_expression>
-                     | T_MINUS <primary_expression> UMINUS
+                     | T_NOT <unary_expression>
+                     | T_MINUS <unary_expression>
 
 <primary_expression> ::= <identifier>
                        | <constant>
@@ -137,6 +139,8 @@ Language specifications for the KriolLang programming language.
 
 <mostra_func_call> ::= T_MOSTRA '(' <argument_list> ')'
                      | T_MOSTRA '(' ')'
+                     | T_MOSTRAN '(' <argument_list> ')'
+                     | T_MOSTRAN '(' ')'
 
 <expression_statement> ::= <expression> ';'
                          | ';'
@@ -160,7 +164,7 @@ Language specifications for the KriolLang programming language.
 
 ```xml
 <iteration_statement> ::= T_NKUANTU <expression> <compound_statement>
-                        | T_PA <expression> ';' <expression> ';' <expression>
+                        | T_PA <expression> ';' <expression> ';' <expression> <compound_statement>
 ```
 
 ### Jump statement
@@ -168,8 +172,10 @@ Language specifications for the KriolLang programming language.
 ```xml
 <jump_statement> ::= T_PARA ';'
                    | T_KONTINUA ';'
-                   | T_PAVOLVI <expression> ';'
-                   | T_PAVOLVI ';'
+                   | T_DIVOLVI <expression> ';'
+                   | T_DIVOLVI ';'
+                   | T_SAI '(' <expression> ')' ';'
+                   | T_KONFIRMA '(' <expression> ')' ';'
 ```
 
 ## License
@@ -184,6 +190,8 @@ Below are the keywords and types in the language mapped to standard C.
 | ----------- | ------------ | ------------ |
 | fn          | fn           | Function     |
 | num         | double       | Number       |
+| nter        | int64_t      | Integer      |
+| textu       | char*        | String       |
 | vaziu       | void         | Void         |
 | bool        | bool         | Boolean      |
 | sin         | true / 1     | True         |
@@ -197,4 +205,7 @@ Below are the keywords and types in the language mapped to standard C.
 | para        | break        | Break        |
 | divolvi     | return       | Return       |
 | mostra      | printf       | Print        |
+| mostran     | printf + \n  | Print + newline |
+| sai         | exit()       | Exit program |
+| konfirma    | assert()     | Assert       |
 | inisiu      | main         | Entry point  |

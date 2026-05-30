@@ -13,7 +13,6 @@
     #define YYERROR_VERBOSE 1
 
     #define SAVE_TOKEN     yylval.string  = new std::string(yytext, yyleng)
-    #define SAVE_BOOLEAN   yylval.boolean = new std::string(strcmp(yytext, "sin") == 0 ? "1" : "0");
     #define TOKENIZE(sym) (yylval.token   = sym)
 
     int yyerror(char const*);
@@ -25,7 +24,11 @@ FLOAT {INT}\.[0-9]+
 
 IDENT [a-zA-Z_][a-zA-Z0-9_]*
 
-STRING ["]([^"\\\n]|\\.|\\\n)*["]
+STRING_DQ   ["]([^"\\\n]|\\.|\\\n)*["]
+STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
+
+FSTR_DQ     f["]([^"\\\n]|\\.|\\\n)*["]
+FSTR_SQ     f[']([^'\\\n]|\\.|\\\n)*[']
 
 %%
 
@@ -34,6 +37,7 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 "/*"([^*]|\*+[^*/])*\*+"/"  /* multi-line comment */;
 
 "fn"            return TOKENIZE(FN);
+"mostran"       return TOKENIZE(MOSTRAN);
 "mostra"        return TOKENIZE(MOSTRA);
 "inpristan"     return TOKENIZE(IMPRISTAN);
 "si"            return TOKENIZE(SI);
@@ -46,8 +50,10 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 "vaziu"         SAVE_TOKEN;   return TYPE_VOID;
 "bool"          SAVE_TOKEN;   return TYPE_BOOL;
 "textu"         SAVE_TOKEN;   return TYPE_TEXTU;
-"sin"           SAVE_BOOLEAN; return BOOL_LIT;
-"nau"           SAVE_BOOLEAN; return BOOL_LIT;
+"sin"           { yylval.string = new std::string("1"); return BOOL_LIT; }
+"nau"           { yylval.string = new std::string("0"); return BOOL_LIT; }
+"sai"           return TOKENIZE(SAI);
+"konfirma"      return TOKENIZE(KONFIRMA);
 "para"          return TOKENIZE(PARA);
 "kontinua"      return TOKENIZE(CONTINUA);
 "+"             return TOKENIZE(PLUS);
@@ -66,6 +72,7 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 "="             return TOKENIZE(ASSIGN);
 "=="            return TOKENIZE(EQ);
 "!="            return TOKENIZE(NE);
+"!"             return TOKENIZE(NOT);
 ">"             return TOKENIZE(GT);
 ">="            return TOKENIZE(GE);
 "<"             return TOKENIZE(LT);
@@ -76,7 +83,10 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 {INT}           SAVE_TOKEN;   return INT_LIT;
 {FLOAT}         SAVE_TOKEN;   return FLOAT_LIT;
 {IDENT}         SAVE_TOKEN;   return IDENT;
-{STRING}        SAVE_TOKEN;   return STR_LIT;
+{FSTR_DQ}       SAVE_TOKEN;   return FSTR_LIT;
+{FSTR_SQ}       SAVE_TOKEN;   return FSTR_LIT;
+{STRING_DQ}     SAVE_TOKEN;   return STR_LIT;
+{STRING_SQ}     SAVE_TOKEN;   return STR_LIT;
 
 . {
     kriol::cli::PrintErr(

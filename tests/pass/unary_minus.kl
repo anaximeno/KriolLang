@@ -1,0 +1,14 @@
+fn inisiu() {
+    nter a = -42;
+    num  b = -3.14;
+    nter c = -(-42);
+    nter d = 2 * -2;
+
+    konfirma(a == -42);
+    konfirma(c == 42);
+
+    mostran(a);
+    mostran(b);
+    mostran(c);
+    mostran(d);
+}

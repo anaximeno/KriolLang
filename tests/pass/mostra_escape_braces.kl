@@ -1,0 +1,7 @@
+// Verify that \{ and \} in f-strings produce literal braces and are NOT treated
+// as interpolation placeholders.
+// Expected output: "42 and {}"
+fn inisiu() {
+    nter n = 42;
+    mostran(f"{n} and \{\}");
+}

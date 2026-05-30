@@ -1,0 +1,11 @@
+fn inisiu() {
+    bool a = !nau;
+    bool b = !sin;
+    bool c = !!sin;
+
+    konfirma(a == sin);
+    konfirma(b == nau);
+    konfirma(c == sin);
+
+    mostran(f"{a} {b} {c}");
+}

@@ -19,7 +19,7 @@ fn mostraMensagem() {
     }
 
     dizenhaLinha(i, nau);
-    mostra("  Oi, Kriol!\n");
+    mostran("  Oi, Kriol!");
 
     pa i = i - 1 ; i > 0 ; i = i - 1 {
         dizenhaLinha(i, sin);

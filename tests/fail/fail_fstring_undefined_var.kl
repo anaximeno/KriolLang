@@ -1,0 +1,4 @@
+// f-string referencing an undeclared variable should be rejected.
+fn inisiu() {
+    mostran(f"Hello {nomi}");
+}

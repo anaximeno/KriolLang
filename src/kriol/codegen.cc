@@ -12,12 +12,13 @@
 #include <llvm/MC/TargetRegistry.h>
 
 #include <llvm/Support/Program.h>
+#include <llvm/Support/Path.h>
 
 #include <stdexcept>
 #include <cstdlib>
 #include <cstdio>
 
-// Interpret C-style backslash escapes in a raw string (without surrounding quotes).
+// Interpret backslash escapes in a raw string (without surrounding quotes).
 static std::string processEscapes(const std::string& raw) {
     std::string out;
     out.reserve(raw.size());
@@ -31,6 +32,8 @@ static std::string processEscapes(const std::string& raw) {
                 case '"':  out += '"';  break;
                 case '\'': out += '\''; break;
                 case '0':  out += '\0'; break;
+                case '{':  out += '{';  break;
+                case '}':  out += '}';  break;
                 default:   out += '\\'; out += raw[i]; break;
             }
         } else {
@@ -38,6 +41,21 @@ static std::string processEscapes(const std::string& raw) {
         }
     }
     return out;
+}
+
+// Returns the printf format specifier for a Kriol type.
+static const char* fmtSpec(const std::string& kriolType) {
+    if (kriolType == "nter") return "%lld";
+    if (kriolType == "num")  return "%g";
+    return "%s"; // textu / fallback
+}
+
+// Reverse-map an LLVM type to the corresponding Kriol type string.
+static std::string llvmTypeToKriol(llvm::Type* ty) {
+    if (ty->isDoubleTy())    return "num";
+    if (ty->isIntegerTy(64)) return "nter";
+    if (ty->isIntegerTy(1))  return "bool";
+    return "textu"; // pointer / fallback
 }
 
 using namespace kriol::ast;
@@ -135,7 +153,7 @@ std::string CodeGenVisitor::emitIR() {
     return buf;
 }
 
-void CodeGenVisitor::emitNative(const std::string& outputPath) {
+void CodeGenVisitor::emitNative(const std::string& outputPath, const char* argv0) {
     auto triple = llvm::sys::getDefaultTargetTriple();
     Mod->setTargetTriple(triple);
 
@@ -162,13 +180,29 @@ void CodeGenVisitor::emitNative(const std::string& outputPath) {
     pm.run(*Mod);
     dest.flush();
 
-    auto ccPath = llvm::sys::findProgramByName("cc");
+    auto ccPath = llvm::sys::findProgramByName("clang");
 
     if (!ccPath)
-        throw std::runtime_error("Cannot find 'cc': " + ccPath.getError().message());
+        throw std::runtime_error("Cannot find 'clang': " + ccPath.getError().message());
+
+#ifdef KRIOL_RUNTIME_OBJ
+    // Resolve the runtime object relative to the running executable.
+    static int anchor;
+    std::string exePath = llvm::sys::fs::getMainExecutable(argv0, (void*)&anchor);
+    llvm::SmallString<256> runtimePath(llvm::sys::path::parent_path(exePath));
+    llvm::sys::path::append(runtimePath, KRIOL_RUNTIME_OBJ);
+    std::string runtimeObj(runtimePath);
+#endif
 
     std::vector<llvm::StringRef> linkArgs = {
-        *ccPath, objPath, "-o", outputPath, "-lm"
+        *ccPath,
+        objPath,
+#ifdef KRIOL_RUNTIME_OBJ
+        runtimeObj,
+#endif
+        "-o",
+        outputPath,
+        "-lm"
     };
 
     std::string linkErr;
@@ -225,7 +259,10 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
 
     if (node.Value) {
         node.Value->accept(*this);
-        if (LastValue) Builder->CreateStore(LastValue, alloca);
+        if (LastValue) {
+            LastValue = coerce(LastValue, ty);
+            Builder->CreateStore(LastValue, alloca);
+        }
     }
     LastValue = nullptr;
 }
@@ -284,7 +321,10 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     if (isMain && !DeferredGlobalInits.empty()) {
         for (auto& di : DeferredGlobalInits) {
             di.InitExpr->accept(*this);
-            if (LastValue) Builder->CreateStore(LastValue, di.Var);
+            if (LastValue) {
+                LastValue = coerce(LastValue, di.Var->getValueType());
+                Builder->CreateStore(LastValue, di.Var);
+            }
         }
         DeferredGlobalInits.clear();
     }
@@ -456,17 +496,17 @@ void CodeGenVisitor::visit(LiteralExpr& node) {
     const auto& t = node.Type;
     const auto& v = node.Value;
 
-    if (t == "float" || t == "num") {
+    if (t == "num") {
         LastValue = llvm::ConstantFP::get(Context, llvm::APFloat(std::stod(v)));
-    } else if (t == "int" || t == "nter") {
+    } else if (t == "nter") {
         LastValue = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context),
                                            std::stoll(v), /*isSigned=*/true);
-    } else if (t == "unsigned short" || t == "bool") {
+    } else if (t == "bool") {
         LastValue = llvm::ConstantInt::get(llvm::Type::getInt1Ty(Context),
                                            std::stoi(v) != 0);
-    } else if (t == "char*" || t == "textu") {
+    } else if (t == "char*") {
         std::string s = v;
-        if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
+        if (s.size() >= 2 && (s.front() == '"' || s.front() == '\'') && s.back() == s.front())
             s = s.substr(1, s.size() - 2);
         LastValue = Builder->CreateGlobalStringPtr(processEscapes(s));
     } else {
@@ -578,54 +618,248 @@ void CodeGenVisitor::visit(ForSttmt& node) {
     LastValue = nullptr;
 }
 
-void CodeGenVisitor::visit(MostraFunCallExpr& node) {
-    if (!node.Args || node.Args->Args.empty()) return;
-    auto& args = node.Args->Args;
+// Declare (or retrieve) one of the __kriol_print(n)_TYPE runtime functions.
+static llvm::Function* getOrDeclareKriolPrint(llvm::Module& Mod, llvm::LLVMContext& Context,
+        const std::string& suffix, llvm::Type* argTy, bool newline)
+{
+    std::string name = newline ? "__kriol_println_" + suffix : "__kriol_print_"  + suffix;
+    if (auto* fn = Mod.getFunction(name)) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {argTy}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, Mod);
+}
 
-    // If first arg is a string literal, pass through as-is (user format string)
-    if (auto* first = dynamic_cast<LiteralExpr*>(args[0].get())) {
-        if (first->Type == "char*") {
-            std::vector<llvm::Value*> callArgs;
-            for (auto& arg : args) {
-                arg->accept(*this);
-                if (LastValue) callArgs.push_back(LastValue);
-            }
-            Builder->CreateCall(getOrDeclarePrintf(), callArgs);
-            LastValue = nullptr;
-            return;
-        }
+// Declare putchar if not already present.
+static llvm::Function* getOrDeclarePutchar(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("putchar")) return fn;
+    auto* ftype = llvm::FunctionType::get(llvm::Type::getInt32Ty(Context),
+        {llvm::Type::getInt32Ty(Context)}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "putchar", Mod);
+}
+
+// Declare (or retrieve) __kriol_bool_to_str: const char* __kriol_bool_to_str(int)
+static llvm::Function* getOrDeclareKriolBoolToStr(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("__kriol_bool_to_str")) return fn;
+    auto* ptrTy = llvm::PointerType::getUnqual(Context);
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    auto* ftype = llvm::FunctionType::get(ptrTy, {i32Ty}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_bool_to_str", Mod);
+}
+
+// Declare (or retrieve) __kriol_format -> char* __kriol_format(const char* fmt, ...)
+static llvm::Function* getOrDeclareKriolFormat(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("__kriol_format")) return fn;
+    auto* ptrTy  = llvm::PointerType::getUnqual(Context);
+    auto* ftype  = llvm::FunctionType::get(ptrTy, {ptrTy}, /*isVarArg=*/true);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_format", Mod);
+}
+
+void CodeGenVisitor::visit(FStringExpr& node) {
+    std::string raw = node.Value;
+
+    if (raw.size() >= 3) {
+        // Strip f prefix and surrounding quotes
+        raw = raw.substr(2, raw.size() - 3);
     }
 
-    // Auto-format: derive format string from Kriol types
-    std::string fmt;
-    for (auto& arg : args) {
-        std::string spec = "%g"; // default: double
-        if (auto* id = dynamic_cast<IdentExpr*>(arg.get())) {
-            auto it = TypeTable.find(id->Name);
-            if (it != TypeTable.end()) {
-                if (it->second == "nter")  spec = "%lld";
-                else if (it->second == "textu") spec = "%s";
-                else if (it->second == "bool")  spec = "%d";
-                else spec = "%g";
-            }
-        } else if (auto* lit = dynamic_cast<LiteralExpr*>(arg.get())) {
-            if (lit->Type == "int" || lit->Type == "nter")        spec = "%lld";
-            else if (lit->Type == "char*" || lit->Type == "textu") spec = "%s";
-            else if (lit->Type == "bool")                          spec = "%d";
-        }
-        fmt += spec;
-    }
-
+    std::string fmtStr;
     std::vector<llvm::Value*> callArgs;
-    callArgs.push_back(Builder->CreateGlobalStringPtr(fmt));
-    for (auto& arg : args) {
-        arg->accept(*this);
-        if (LastValue) callArgs.push_back(LastValue);
+
+    size_t i = 0;
+    while (i < raw.size()) {
+        char c = raw[i];
+        if (c == '\\' && i + 1 < raw.size()) {
+            char next = raw[i + 1];
+            switch (next) {
+                case '{':  fmtStr += '{';  i += 2; break;
+                case '}':  fmtStr += '}';  i += 2; break;
+                case 'n':  fmtStr += '\n'; i += 2; break;
+                case 't':  fmtStr += '\t'; i += 2; break;
+                case 'r':  fmtStr += '\r'; i += 2; break;
+                case '\\': fmtStr += '\\'; i += 2; break;
+                case '"':  fmtStr += '"';  i += 2; break;
+                case '\'': fmtStr += '\''; i += 2; break;
+                case '0':  fmtStr += '\0'; i += 2; break;
+                default:   fmtStr += '\\'; fmtStr += next; i += 2; break;
+            }
+        } else if (c == '{') {
+            size_t end = raw.find('}', i + 1);
+
+            // malformed or empty {}, semantic analyzer should handle. skip the placeholder entirely.
+            if (end == std::string::npos) { ++i; continue; }
+
+            std::string name = raw.substr(i + 1, end - i - 1);
+
+            // trim leading/trailing whitespace
+            auto ns = name.find_first_not_of(' ');
+            auto ne = name.find_last_not_of(' ');
+            name = (ns == std::string::npos) ? "" : name.substr(ns, ne - ns + 1);
+
+            // empty name, semantic analyzer should handle. skip the placeholder entirely.
+            if (name.empty()) { i = end + 1; continue; }
+
+            auto* alloca = lookupVar(name);
+            llvm::Value* val = nullptr;
+            std::string kriolType;
+
+            if (alloca) {
+                llvm::Type* ty = alloca->getAllocatedType();
+                kriolType = llvmTypeToKriol(ty);
+                val = Builder->CreateLoad(ty, alloca, name);
+            } else if (auto* gv = lookupGlobal(name)) {
+                llvm::Type* ty = gv->getValueType();
+                kriolType = llvmTypeToKriol(ty);
+                val = Builder->CreateLoad(ty, gv, name);
+            }
+
+            if (val) {
+                if (kriolType == "bool") {
+                    llvm::Value* ext = val->getType()->isIntegerTy(1)
+                        ? Builder->CreateZExt(val, llvm::Type::getInt32Ty(Context))
+                        : val;
+                    val = Builder->CreateCall(
+                        getOrDeclareKriolBoolToStr(*Mod, Context), {ext}, "bool_str");
+                    fmtStr += "%s";
+                } else {
+                    fmtStr += fmtSpec(kriolType);
+                }
+                callArgs.push_back(val);
+            } else {
+                fmtStr += fmtSpec(kriolType);
+            }
+            i = end + 1;
+        } else {
+            // Escape literal % signs so they pass through printf unchanged
+            if (c == '%') fmtStr += '%';
+            fmtStr += c;
+            ++i;
+        }
     }
-    Builder->CreateCall(getOrDeclarePrintf(), callArgs);
+
+    auto* fmtGstr = Builder->CreateGlobalStringPtr(fmtStr, "fstr_fmt");
+    callArgs.insert(callArgs.begin(), fmtGstr);
+    auto* formatFn = getOrDeclareKriolFormat(*Mod, Context);
+    LastValue = Builder->CreateCall(formatFn, callArgs, "fstr");
+}
+
+void CodeGenVisitor::visit(MostraFunCallExpr& node) {
+    auto* ptrTy    = llvm::PointerType::getUnqual(Context);
+    auto* i64Ty    = llvm::Type::getInt64Ty(Context);
+    auto* doubleTy = llvm::Type::getDoubleTy(Context);
+    auto* i32Ty    = llvm::Type::getInt32Ty(Context);
+
+    auto emitPrintValue = [&](llvm::Value* val, const std::string& resolvedType, bool newline) {
+        if (resolvedType == "nter") {
+            if (val->getType() != i64Ty) val = coerce(val, i64Ty);
+            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "nter", i64Ty, newline), {val});
+        } else if (resolvedType == "num") {
+            if (val->getType() != doubleTy) val = coerce(val, doubleTy);
+            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "num", doubleTy, newline), {val});
+        } else if (resolvedType == "bool") {
+            llvm::Value* ext = val->getType()->isIntegerTy(1)
+                ? Builder->CreateZExt(val, i32Ty, "bool_ext")
+                : Builder->CreateTrunc(val, i32Ty, "bool_ext");
+            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "bool", i32Ty, newline), {ext});
+        } else {
+            if (!val->getType()->isPointerTy()) val = Builder->CreateIntToPtr(val, ptrTy);
+            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "textu", ptrTy, newline), {val});
+        }
+    };
+
+    if (!node.Args || node.Args->Args.empty()) {
+        if (node.AddNewline)
+            Builder->CreateCall(getOrDeclarePutchar(*Mod, Context),
+                                {llvm::ConstantInt::get(i32Ty, '\n')});
+        LastValue = nullptr;
+        return;
+    }
+
+    auto& args    = node.Args->Args;
+    size_t lastIdx = args.size() - 1;
+
+    for (size_t i = 0; i < args.size(); ++i) {
+        bool addNlHere = (i == lastIdx) && node.AddNewline;
+        auto& arg = args[i];
+
+        arg->accept(*this);
+        llvm::Value* v = LastValue;
+        if (v) emitPrintValue(v, arg->ResolvedType, addNlHere);
+    }
+
     LastValue = nullptr;
 }
 
 void CodeGenVisitor::visit(ImportSttmt& node) {
     // C #include directives have no LLVM IR equivalent; skipped.
+}
+
+void CodeGenVisitor::visit(UnaryExpr& node) {
+    if (!node.Operand) { LastValue = nullptr; return; }
+    node.Operand->accept(*this);
+
+    llvm::Value* v = LastValue;
+    if (!v) { LastValue = nullptr; return; }
+
+    if (node.Op == "!") {
+        LastValue = Builder->CreateNot(toBool(v), "nottmp");
+    } else { // "-"
+        if (v->getType()->isDoubleTy())
+            LastValue = Builder->CreateFNeg(v, "negtmp");
+        else
+            LastValue = Builder->CreateNeg(v, "negtmp");
+    }
+}
+
+// Declare (or retrieve) libc exit
+static llvm::Function* getOrDeclareExit(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("exit")) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* i32Ty  = llvm::Type::getInt32Ty(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {i32Ty}, false);
+    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "exit", Mod);
+    fn->addFnAttr(llvm::Attribute::NoReturn);
+    return fn;
+}
+
+// Declare (or retrieve) __kriol_konfirma -> void __kriol_konfirma(i32 cond, i32 line)
+static llvm::Function* getOrDeclareKriolKonfirma(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("__kriol_konfirma")) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* i32Ty  = llvm::Type::getInt32Ty(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {i32Ty, i32Ty}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_konfirma", Mod);
+}
+
+void CodeGenVisitor::visit(SaiSttmt& node) {
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    // Default to exit code 0 if no expression is provided.
+    llvm::Value* code = llvm::ConstantInt::get(i32Ty, 0);
+    if (node.Code) {
+        node.Code->accept(*this);
+        if (LastValue) code = coerce(LastValue, i32Ty);
+    }
+    Builder->CreateCall(getOrDeclareExit(*Mod, Context), {code});
+    Builder->CreateUnreachable();
+    LastValue = nullptr;
+}
+
+void CodeGenVisitor::visit(KonfirmaSttmt& node) {
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    // Default to true (1) if no condition is provided.
+    llvm::Value* cond = llvm::ConstantInt::get(i32Ty, 1);
+    if (node.Cond) {
+        node.Cond->accept(*this);
+        if (LastValue) {
+            llvm::Value* b = toBool(LastValue);
+            cond = Builder->CreateZExt(b, i32Ty, "konfirma_cond");
+        }
+    }
+    llvm::Value* line = llvm::ConstantInt::get(i32Ty, node.LineNum);
+    Builder->CreateCall(getOrDeclareKriolKonfirma(*Mod, Context), {cond, line});
+    LastValue = nullptr;
 }
