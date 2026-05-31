@@ -202,7 +202,8 @@ void CodeGenVisitor::emitNative(const std::string& outputPath, const char* argv0
 #endif
         "-o",
         outputPath,
-        "-lm"
+        "-lm",
+        "-lgc"
     };
 
     std::string linkErr;
@@ -306,6 +307,15 @@ void CodeGenVisitor::visit(FuncArgs& node) {
     // Handled inside FuncDeclSttmt
 }
 
+// Declare (or retrieve) __kriol_gc_init -> void __kriol_gc_init(void)
+static llvm::Function* getOrDeclareKriolGcInit(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("__kriol_gc_init")) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_gc_init", Mod);
+}
+
 void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
     std::string name = isMain ? "main" : node.Name;
@@ -347,6 +357,12 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
             Builder->CreateStore(&llvmArg, a);
             declareVar(p->Name, a);
         }
+    }
+
+    // Initialise the Boehm GC as the very first thing in main.
+    if (isMain) {
+        auto* gcInit = getOrDeclareKriolGcInit(*Mod, Context);
+        Builder->CreateCall(gcInit, {});
     }
 
     // Emit deferred global initializers at the top of inisiu (main)

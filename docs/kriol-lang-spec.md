@@ -178,6 +178,12 @@ Language specifications for the KriolLang programming language.
                    | T_KONFIRMA '(' <expression> ')' ';'
 ```
 
+## Memory Management
+
+TODO
+
+---
+
 ## License
 
 The specification of the KriolLang programming language is released under the [MIT License](LICENSE).

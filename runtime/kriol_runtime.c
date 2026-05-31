@@ -8,6 +8,11 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <gc.h>
+
+void __kriol_gc_init(void) {
+    GC_INIT();
+}
 
 void __kriol_print_nter(int64_t v) {
     printf("%lld", (long long)v);
@@ -52,7 +57,9 @@ void __kriol_println_textu(const char* s) {
 /* Build a formatted string (f-string support).
  *
  * Accepts a printf-style format string and variadic args.
- * Returns a heap-allocated char* that the caller is responsible for freeing.
+ * Returns a GC-managed char*, memory is reclaimed automatically by the
+ * Boehm GC.
+ *
  * On allocation failure returns NULL.
  */
 char* __kriol_format(const char* fmt, ...) {
@@ -66,7 +73,7 @@ char* __kriol_format(const char* fmt, ...) {
     // excluding null terminator. If needed is negative, an encoding error occurred.
     if (needed < 0) return NULL;
 
-    char* buf = (char*)malloc((size_t)needed + 1);
+    char* buf = (char*)GC_malloc((size_t)needed + 1);
 
     if (!buf) return NULL;
 
