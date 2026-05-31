@@ -8,8 +8,40 @@ using namespace kriol::ast;
 namespace kriol {
 namespace sema {
 
+bool SemanticAnalyzer::isWideningCoercion(const std::string& from,
+                                          const std::string& to) {
+    if (from == to) return true;
+    if (from == "nter" && to == "num")  return true;
+    if (from == "bool" && to == "nter") return true;
+    if (from == "bool" && to == "num")  return true;
+    return false;
+}
+
+void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
+    if (FunctionTable.count(node.Name)) {
+        addError("duplicate function declaration '" + node.Name + "'"
+                 + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
+        return;
+    }
+    FuncInfo info;
+    info.retType = node.Type;
+    if (node.Args)
+        for (auto& arg : node.Args->Args)
+            if (arg) info.paramTypes.push_back(arg->Type);
+    FunctionTable[node.Name] = std::move(info);
+}
+
 void SemanticAnalyzer::Check(BlockSttmt* program) {
     if (!program) return;
+
+    // First pass: register all top-level function signatures so forward calls
+    // and mutual recursion are resolved before any body is visited.
+    for (auto& s : program->SttmtList) {
+        if (auto* fn = dynamic_cast<FuncDeclSttmt*>(s.get()))
+            registerFuncSignature(*fn);
+    }
+
+    // Second pass: full semantic walk.
     pushScope();
     for (auto& s : program->SttmtList)
         if (s) s->accept(*this);
@@ -70,8 +102,10 @@ void SemanticAnalyzer::visit(FuncArgs& node) {
 }
 
 void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
-    // Register before visiting body so recursive calls are valid
-    FunctionTable[node.Name] = node.Type;
+    // If the signature wasn't pre-registered (nested function), register it now.
+    // Top-level functions are already in FunctionTable from the first pass.
+    if (!FunctionTable.count(node.Name))
+        registerFuncSignature(node);
 
     std::string savedRetType = CurrFuncRetType;
     std::string savedName    = CurrFuncName;
@@ -122,15 +156,24 @@ void SemanticAnalyzer::visit(JumpSttmt& node) {
 }
 
 void SemanticAnalyzer::visit(ReturnSttmt& node) {
-    // Make sure we are not returning a value from a void function
+    const std::string loc = node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : "";
+
     if (!CurrFuncRetType.empty() && CurrFuncRetType == "vaziu" && node.ReturnValue)
-        addError("returning a value from void function '" + CurrFuncName + "'"
-                 + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
-    // Make sure we are returning a value from a non-void function
+        addError("returning a value from void function '" + CurrFuncName + "'" + loc);
+
     if (!CurrFuncRetType.empty() && CurrFuncRetType != "vaziu" && !node.ReturnValue)
-        addError("missing return value in non-void function '" + CurrFuncName + "'"
-                 + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
-    if (node.ReturnValue) node.ReturnValue->accept(*this);
+        addError("missing return value in non-void function '" + CurrFuncName + "'" + loc);
+
+    if (node.ReturnValue) {
+        node.ReturnValue->accept(*this);
+        const std::string& got = node.ReturnValue->ResolvedType;
+        if (!got.empty() && !CurrFuncRetType.empty()
+                && CurrFuncRetType != "vaziu"
+                && got != CurrFuncRetType
+                && !isWideningCoercion(got, CurrFuncRetType))
+            addError("returning '" + got + "' from function '" + CurrFuncName
+                     + "' declared as '" + CurrFuncRetType + "'" + loc);
+    }
 }
 
 void SemanticAnalyzer::visit(FuncCallArgs& node) {
@@ -141,10 +184,33 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     if (node.Args)
         for (auto& arg : node.Args->Args)
             if (arg) arg->accept(*this);
-    // Resolve return type from FunctionTable
+
     auto it = FunctionTable.find(node.Name);
-    if (it != FunctionTable.end())
-        node.ResolvedType = it->second;
+    if (it == FunctionTable.end()) return;
+
+    const FuncInfo& info = it->second;
+    node.ResolvedType = info.retType;
+
+    const std::string loc = node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : "";
+    size_t got  = node.Args ? node.Args->Args.size() : 0;
+    size_t want = info.paramTypes.size();
+
+    if (got != want) {
+        addError("function '" + node.Name + "' expects " + std::to_string(want)
+                 + " argument(s), got " + std::to_string(got) + loc);
+        return; // type checks make no sense if counts differ
+    }
+
+    if (node.Args) {
+        for (size_t i = 0; i < node.Args->Args.size(); ++i) {
+            const std::string& argType   = node.Args->Args[i]->ResolvedType;
+            const std::string& paramType = info.paramTypes[i];
+            if (!argType.empty() && argType != paramType
+                    && !isWideningCoercion(argType, paramType))
+                addError("argument " + std::to_string(i + 1) + " of '" + node.Name
+                         + "': expected '" + paramType + "', got '" + argType + "'" + loc);
+        }
+    }
 }
 
 void SemanticAnalyzer::visit(BinExpr& node) {

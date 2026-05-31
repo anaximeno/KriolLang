@@ -267,7 +267,35 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     LastValue = nullptr;
 }
 
+void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
+    bool isMain   = (node.Name == "inisiu");
+    std::string name = isMain ? "main" : node.Name;
+
+    // already declared
+    if (Mod->getFunction(name)) return;
+
+    std::vector<llvm::Type*> paramTypes;
+    if (node.Args)
+        for (auto& arg : node.Args->Args)
+            paramTypes.push_back(mapType(arg->Type));
+
+    llvm::Type* retTy = isMain
+        ? llvm::Type::getInt32Ty(Context)
+        : mapType(node.Type);
+
+    auto* ftype = llvm::FunctionType::get(retTy, paramTypes, false);
+    llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
+}
+
 void CodeGenVisitor::visit(BlockSttmt& node) {
+    // At program root forward-declare all user functions
+    // so that forward calls and mutual recursion resolve in codegen.
+    if (!CurrentFunction) {
+        for (auto& s : node.SttmtList)
+            if (auto* fn = dynamic_cast<FuncDeclSttmt*>(s.get()))
+                forwardDeclareFunc(*fn);
+    }
+
     pushScope();
     for (auto& s : node.SttmtList)
         if (s) s->accept(*this);
@@ -291,9 +319,13 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
         ? llvm::Type::getInt32Ty(Context)
         : mapType(node.Type);
 
-    auto* ftype = llvm::FunctionType::get(retTy, paramTypes, false);
-    auto* fn    = llvm::Function::Create(
-        ftype, llvm::Function::ExternalLinkage, name, *Mod);
+    // Get the function if it was already forward-declared, otherwise create it now.
+    auto* fn = Mod->getFunction(name);
+
+    if (!fn) {
+        auto* ftype = llvm::FunctionType::get(retTy, paramTypes, false);
+        fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
+    }
 
     if (node.Args) {
         size_t i = 0;
@@ -426,6 +458,10 @@ void CodeGenVisitor::visit(JumpSttmt& node) {
 void CodeGenVisitor::visit(ReturnSttmt& node) {
     if (node.ReturnValue) {
         node.ReturnValue->accept(*this);
+        // Coerce to the function's declared return type (e.g. nter -> num widening)
+        llvm::Type* retTy = Builder->GetInsertBlock()->getParent()->getReturnType();
+        if (LastValue && LastValue->getType() != retTy)
+            LastValue = coerce(LastValue, retTy);
         Builder->CreateRet(LastValue);
     } else {
         Builder->CreateRetVoid();
@@ -744,7 +780,7 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
 }
 
 void CodeGenVisitor::visit(ImportSttmt& node) {
-    // C #include directives have no LLVM IR equivalent; skipped.
+    // TODO: Implement module imports
 }
 
 void CodeGenVisitor::visit(UnaryExpr& node) {

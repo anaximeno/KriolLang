@@ -1,0 +1,10 @@
+fn media(num a, num b) num {
+    divolvi (a + b) / 2;
+}
+
+fn inisiu() {
+    nter x = 3;
+    nter y = 7;
+    num r = media(x, y);
+    mostran(r);
+}

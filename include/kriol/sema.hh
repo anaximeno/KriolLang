@@ -17,8 +17,14 @@ namespace sema {
         // Scoped symbol table: each entry is one scope level (name -> Kriol type)
         std::vector<std::unordered_map<std::string, std::string>> SymbolScopes;
 
-        // Known user-defined functions (name -> return type)
-        std::unordered_map<std::string, std::string> FunctionTable;
+        // Signature record for a user-defined function
+        struct FuncInfo {
+            std::string retType;
+            std::vector<std::string> paramTypes;
+        };
+
+        // Known user-defined functions (name -> signature)
+        std::unordered_map<std::string, FuncInfo> FunctionTable;
 
         // Return type of the function currently being analysed ("" at top level)
         std::string CurrFuncRetType;
@@ -52,6 +58,14 @@ namespace sema {
         // return statement. Conservative: only if/else with both branches
         // returning is recognised as a definite return.
         bool blockDefinitelyReturns(ast::BlockSttmt* block) const;
+
+        // Returns true if assigning/returning `from` where `to` is expected
+        // is a legal implicit widening (nter->num, bool->nter, bool->num).
+        static bool isWideningCoercion(const std::string& from, const std::string& to);
+
+        // Pre-registers a function's full signature into FunctionTable without
+        // visiting the body. Called in the first pass of Check().
+        void registerFuncSignature(ast::FuncDeclSttmt& node);
 
         void addError(const std::string& msg) { Errors.push_back(msg); }
 

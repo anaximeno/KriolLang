@@ -1,0 +1,7 @@
+fn soma(nter a, nter b) nter {
+    divolvi a + b;
+}
+
+fn inisiu() {
+    soma(1, 2, 3);
+}

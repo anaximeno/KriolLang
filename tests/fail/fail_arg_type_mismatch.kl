@@ -1,0 +1,7 @@
+fn gritar(textu msg) vaziu {
+    mostran(msg);
+}
+
+fn inisiu() {
+    gritar(42);
+}
