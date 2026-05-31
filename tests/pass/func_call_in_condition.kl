@@ -1,0 +1,17 @@
+fn double(nter n) nter {
+    divolvi n * 2;
+}
+
+fn isPositive(nter n) bool {
+    divolvi n > 0;
+}
+
+fn inisiu() {
+    si double(3) == 6 {
+        mostran("double(3) is 6");
+    }
+    mostran(f"double(5) = {double(5)}");
+    si isPositive(double(2)) {
+        mostran("double(2) is positive");
+    }
+}

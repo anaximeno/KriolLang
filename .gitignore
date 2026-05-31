@@ -21,3 +21,6 @@ rules/parser
 
 # Compiler binary
 /kriol
+
+# Test error output
+*.err

@@ -33,24 +33,25 @@
 %destructor { delete $$; } <string> <integer> <floatingpoint>
 %destructor { delete $$; } <expr> <sttmt> <block> <vardecl> <params> <args> <litexpr>
 
-%token<string> IDENT STR_LIT FSTR_LIT
-%token<token> MOSTRA MOSTRAN
-%token<integer> INT_LIT
-%token<floatingpoint> FLOAT_LIT
-%token<string> BOOL_LIT
-%token<token>  PLUS MINUS MUL DIV
-%token<token>  EQ  NE  LT LE GT GE
-%token<token>  AND OR ASSIGN LCURLY RCURLY COMMA SEMIC LBRAC RBRAC
+%token<string> IDENT "valid identifier" STR_LIT "string literal" FSTR_TEXT "f-string text"
+%token<token> MOSTRA "mostra" MOSTRAN "mostran"
+%token<integer> INT_LIT "integer literal"
+%token<floatingpoint> FLOAT_LIT "floating-point literal "
+%token<string> BOOL_LIT "boolean literal"
+%token<token>  PLUS "+" MINUS "-" MUL "*" DIV "/"
+%token<token>  EQ "=="  NE "!="  LT "<" LE "<=" GT ">" GE ">="
+%token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," SEMIC ";" LBRAC "[" RBRAC "]"
 %token<string> TYPE_NUM TYPE_BOOL TYPE_VOID TYPE_NTER TYPE_TEXTU
-%token<token>  DIVOLVI PA STRUT
-%token<token>  NKUANTU SI SINON IMPRISTAN
-%token<token> PARA CONTINUA DOT RPAR LPAR
-%token<token> FN NOT SAI KONFIRMA
+%token<token>  DIVOLVI "divolvi" PA "pa"
+%token<token>  NKUANTU "nkuantu" SI "si" SINON "sinon" IMPRISTAN "inpristan"
+%token<token> PARA "para" CONTINUA "kontinua" DOT "." RPAR ")" LPAR "("
+%token<token> FN "fn" NOT "!" SAI "sai" KONFIRMA "konfirma"
+%token<token> FSTR_START "f-string" FSTR_END "end of f-string" FSTR_LBRACE "start of interpolation" FSTR_RBRACE "end of interpolation"
 
-%type<expr> expression assignment_expression function_call primary_expression
+%type<expr> expression assignment_expression primary_expression
             constant_expression constant logical_or_expressions logical_and_expressions
             equality_expression relational_expression additive_expression multiplicative_expression
-            unary_expression initializer mostra_func_call
+            unary_expression initializer mostra_func_call fstring fstring_parts
 %type<sttmt> expression_statement selection_statement iteration_statement jump_statement
              function_declaration declaration statement import_statement
 %type<block> compound_statement statements else_then
@@ -85,8 +86,17 @@ constant : INT_LIT   { auto lit = new ast::LiteralExpr("nter",  *$1); lit->LineN
          | FLOAT_LIT { auto lit = new ast::LiteralExpr("num",   *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
          | BOOL_LIT  { auto lit = new ast::LiteralExpr("bool",  *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
          | STR_LIT   { auto lit = new ast::LiteralExpr("char*", *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
-         | FSTR_LIT  { auto fs = new ast::FStringExpr(*$1); fs->LineNum = yylineno; $$ = fs; delete $1; }
+         | fstring   { $$ = $1; }
          ;
+
+fstring : FSTR_START fstring_parts FSTR_END { $$ = $2; }
+        ;
+
+fstring_parts
+    : %empty { auto fs = new ast::FStringExpr(); fs->LineNum = yylineno; $$ = fs; }
+    | fstring_parts FSTR_TEXT { static_cast<ast::FStringExpr*>($1)->addText(*$2); delete $2; $$ = $1; }
+    | fstring_parts FSTR_LBRACE constant_expression FSTR_RBRACE { static_cast<ast::FStringExpr*>($1)->addExpr(std::unique_ptr<ast::Expr>($3)); $$ = $1; }
+    ;
 
 identifier : IDENT { $$ = $1; }
            ;
@@ -105,7 +115,6 @@ initializer : expression { $$ = $1; }
             ;
 
 expression : assignment_expression { $$ = $1; }
-           | function_call { $$ = $1; }
            ;
 
 constant_expression : logical_or_expressions { $$ = $1; }
@@ -146,9 +155,12 @@ unary_expression : primary_expression                          { $$ = $1; }
                  | MINUS unary_expression %prec UMINUS          { auto n = new ast::UnaryExpr("-", std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
                  ;
 
-primary_expression : identifier { auto n = new ast::IdentExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
-                   | constant { $$ = $1; }
-                   | LPAR expression RPAR { auto n = new ast::ParExpr(std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
+primary_expression : IDENT LPAR argument_list RPAR { auto n = new ast::FunCallExpr(*$1, std::unique_ptr<ast::FuncCallArgs>($3)); n->LineNum = yylineno; $$ = n; delete $1; }
+                   | IDENT LPAR RPAR               { auto n = new ast::FunCallExpr(*$1, nullptr); n->LineNum = yylineno; $$ = n; delete $1; }
+                   | mostra_func_call               { $$ = $1; }
+                   | IDENT                          { auto n = new ast::IdentExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
+                   | constant                       { $$ = $1; }
+                   | LPAR expression RPAR           { auto n = new ast::ParExpr(std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
                    ;
 
 assignment_expression : constant_expression { $$ = $1; }
@@ -170,16 +182,11 @@ parameter_list : parameter_declaration { $$ = new ast::FuncArgs(); $$->AddArg(st
                | parameter_list COMMA parameter_declaration { $1->AddArg(std::unique_ptr<ast::VarDeclSttmt>($3)); $$ = $1; }
                ;
 
-parameter_declaration : type_specifier declarator { $$ = new ast::VarDeclSttmt(*$1, *$2, nullptr); $$->IsParam = true; delete $1; delete $2; }
+parameter_declaration : type_specifier declarator { $$ = new ast::VarDeclSttmt(*$1, *$2, nullptr); $$->IsParam = true; $$->LineNum = yylineno; delete $1; delete $2; }
                       ;
 
 argument_list : argument_list COMMA expression { $1->AddArg(std::unique_ptr<ast::Expr>($3)); $$ = $1; }
               | expression { $$ = new ast::FuncCallArgs(); $$->AddArg(std::unique_ptr<ast::Expr>($1)); }
-              ;
-
-function_call : identifier LPAR argument_list RPAR { auto n = new ast::FunCallExpr(*$1, std::unique_ptr<ast::FuncCallArgs>($3)); n->LineNum = yylineno; $$ = n; delete $1; }
-              | identifier LPAR RPAR { auto n = new ast::FunCallExpr(*$1, nullptr); n->LineNum = yylineno; $$ = n; delete $1; }
-              | mostra_func_call { $$ = $1; }
               ;
 
 mostra_func_call : MOSTRA LPAR argument_list RPAR { auto n = new ast::MostraFunCallExpr(std::unique_ptr<ast::FuncCallArgs>($3)); n->LineNum = yylineno; $$ = n; }
@@ -241,5 +248,5 @@ jump_statement : PARA SEMIC { auto n = new ast::JumpSttmt("break"); n->LineNum =
 %%
 
 void yyerror(kriol::ast::BlockSttmt** Program, const char* err) {
-    kriol::cli::PrintErr(err, 1);
+    kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, err, 1);
 }

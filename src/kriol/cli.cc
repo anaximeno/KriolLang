@@ -25,15 +25,31 @@ extern FILE *yyin;
 
 extern int yyparse(kriol::ast::BlockSttmt** Program);
 
+static std::string g_source_file;
+
+void cli::SetSourceFile(const std::string& filename) {
+    g_source_file = filename;
+}
+
+const std::string& cli::GetSourceFile() {
+    return g_source_file;
+}
+
 void cli::PrintErr(std::string message)
 {
-    std::cerr << KL_STANDARD_NAME << ": Err: " << message << std::endl;
+    std::cerr << KL_STANDARD_COMPILER_NAME << ": err: " << message << std::endl;
 }
 
 void cli::PrintErr(std::string message, int exitNum)
 {
     cli::PrintErr(message);
     exit(exitNum);
+}
+
+void cli::PrintErr(const std::string& file, int line, const std::string& msg, int exitNum) {
+    std::string location = file.empty() ? "" : file + ":" + std::to_string(line) + ": ";
+    std::cerr << KL_STANDARD_COMPILER_NAME << ": err: " << location << msg << std::endl;
+    if (exitNum >= 0) exit(exitNum);
 }
 
 void cli::ExecuteCommand(std::string command)
@@ -161,6 +177,7 @@ void cli::KriolLangParserWrapper::ParseFile(std::string filename, ast::BlockSttm
     }
 
     yyin = file;
+    cli::SetSourceFile(filename);
     yyparse(Program);
 
     fclose(file);
@@ -194,6 +211,7 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
     if (ProgramNode)
     {
         kriol::sema::SemanticAnalyzer sema;
+        sema.SetSourceFile(Args.filename);
         sema.Check(ProgramNode.get());
         if (sema.HasErrors())
         {

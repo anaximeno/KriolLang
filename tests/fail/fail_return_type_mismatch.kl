@@ -1,0 +1,8 @@
+fn dobra(nter x) nter {
+    divolvi "nau e um nter";
+}
+
+fn inisiu() {
+    nter a = dobra(3);
+    mostran(f"{a}");
+}

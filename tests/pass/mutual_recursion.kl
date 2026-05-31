@@ -1,0 +1,14 @@
+fn par(nter n) bool {
+    si n == 0 { divolvi sin; }
+    divolvi impar(n - 1);
+}
+
+fn impar(nter n) bool {
+    si n == 0 { divolvi nau; }
+    divolvi par(n - 1);
+}
+
+fn inisiu() {
+    mostran(par(4));
+    mostran(impar(3));
+}

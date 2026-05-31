@@ -67,6 +67,10 @@ namespace ast {
 
         llvm::Function* getOrDeclarePrintf();
 
+        // Forward-declare a user function in the LLVM module (type + name, no body).
+        // Called in the program-root pre-pass so mutual/forward calls resolve.
+        void forwardDeclareFunc(ast::FuncDeclSttmt& node);
+
         // Central scalar coercion table: convert v to targetTy.
         // Supported pairs: nter->num (SIToFP), bool->nter (ZExt),
         // bool->num (UIToFP), num->nter (FPToSI). Identity is a no-op.

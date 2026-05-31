@@ -6,7 +6,7 @@
 #define KL_STANDARD_COMPILER_NAME "kriol"
 
 #define KL_VERSION_MAJOR 1
-#define KL_VERSION_MINOR 5
+#define KL_VERSION_MINOR 6
 #define KL_VERSION_PATCH 0
 
 #define KL_VERSION_STRING \

@@ -8,8 +8,69 @@ using namespace kriol::ast;
 namespace kriol {
 namespace sema {
 
+static const std::unordered_set<std::string> reservedKeywords = {
+    // Built-in/runtime statements and call forms.
+    "mostra", "mostran", "sai", "konfirma",
+
+    // Language keywords.
+    "si", "sinon", "nkuantu", "pa", "fn", "divolvi", "inpristan",
+    "para", "kontinua",
+
+    // Type names and literals.
+    "num", "nter", "bool", "vaziu", "textu", "sin", "nau"
+};
+
+bool SemanticAnalyzer::isReservedKeyword(const std::string& name) {
+    return reservedKeywords.count(name) != 0;
+}
+
+bool SemanticAnalyzer::checkDeclaredNameValid(const std::string& name,
+                                            const std::string& kind,
+                                            int lineNum) {
+    if (!isReservedKeyword(name)) return true;
+
+    addError(errLoc(lineNum) + kind + " name '" + name
+             + "' is reserved and cannot be redeclared");
+
+    return false;
+}
+
+bool SemanticAnalyzer::isWideningCoercion(const std::string& from,
+                                          const std::string& to) {
+    if (from == to) return true;
+    if (from == "nter" && to == "num")  return true;
+    if (from == "bool" && to == "nter") return true;
+    if (from == "bool" && to == "num")  return true;
+    return false;
+}
+
+void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
+    if (!checkDeclaredNameValid(node.Name, "function", node.LineNum)) return;
+
+    if (FunctionTable.count(node.Name)) {
+        addError(errLoc(node.LineNum) + "duplicate function declaration '" + node.Name + "'");
+        return;
+    }
+
+    FuncInfo info;
+    info.retType = node.Type;
+    if (node.Args)
+        for (auto& arg : node.Args->Args)
+            if (arg) info.paramTypes.push_back(arg->Type);
+    FunctionTable[node.Name] = std::move(info);
+}
+
 void SemanticAnalyzer::Check(BlockSttmt* program) {
     if (!program) return;
+
+    // First pass: register all top-level function signatures so forward calls
+    // and mutual recursion are resolved before any body is visited.
+    for (auto& s : program->SttmtList) {
+        if (auto* fn = dynamic_cast<FuncDeclSttmt*>(s.get()))
+            registerFuncSignature(*fn);
+    }
+
+    // Second pass: full semantic walk.
     pushScope();
     for (auto& s : program->SttmtList)
         if (s) s->accept(*this);
@@ -43,17 +104,26 @@ bool SemanticAnalyzer::blockDefinitelyReturns(BlockSttmt* block) const {
 
 
 void SemanticAnalyzer::visit(VarDeclSttmt& node) {
-    if (!node.IsParam) {
-        // Check for duplicate in the innermost scope only
-        if (!SymbolScopes.empty()) {
-            auto& cur = SymbolScopes.back();
-            if (cur.count(node.Name))
-                addError("variable '" + node.Name + "' already declared in this scope"
-                         + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
+    const std::string kind = node.IsParam ? "parameter" : "variable";
+    bool canDeclare = checkDeclaredNameValid(node.Name, kind, node.LineNum);
+
+    // Check for duplicate in the innermost scope only.
+    if (!SymbolScopes.empty()) {
+        auto& cur = SymbolScopes.back();
+        if (cur.count(node.Name)) {
+            addError(errLoc(node.LineNum) + kind + " '" + node.Name + "' already declared in this scope");
+            canDeclare = false;
         }
-        declareVar(node.Name, node.Type);
     }
-    if (node.Value) node.Value->accept(*this);
+
+    if (canDeclare)
+        declareVar(node.Name, node.Type);
+
+    if (node.Value) {
+        node.Value->accept(*this);
+        if (!node.Value->ResolvedType.empty() && node.Value->ResolvedType == "vaziu")
+            addError(errLoc(node.LineNum) + "cannot assign void expression to variable '" + node.Name + "'");
+    }
 }
 
 void SemanticAnalyzer::visit(BlockSttmt& node) {
@@ -70,8 +140,13 @@ void SemanticAnalyzer::visit(FuncArgs& node) {
 }
 
 void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
-    // Register before visiting body so recursive calls are valid
-    FunctionTable[node.Name] = node.Type;
+    // If the signature wasn't pre-registered (nested function), register it now.
+    // Top-level functions are already in FunctionTable from the first pass.
+    if (!FunctionTable.count(node.Name)) {
+        // Top-level functions were handled in the pre-registration pass.
+        if (SymbolScopes.size() > 1)
+            registerFuncSignature(node);
+    }
 
     std::string savedRetType = CurrFuncRetType;
     std::string savedName    = CurrFuncName;
@@ -83,7 +158,7 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
     // Add parameters to function scope
     if (node.Args) {
         for (auto& arg : node.Args->Args) {
-            if (arg) declareVar(arg->Name, arg->Type);
+            if (arg) arg->accept(*this);
         }
     }
 
@@ -93,8 +168,7 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
     bool isEntry = (node.Name == "inisiu");
     bool isVoid  = (node.Type == "vaziu");
     if (!isEntry && !isVoid && !blockDefinitelyReturns(node.Body.get()))
-        addError("function '" + node.Name + "' does not return on all paths"
-                 + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
+        addError(errLoc(node.LineNum) + "function '" + node.Name + "' does not return on all paths");
 
     popScope();
     CurrFuncRetType = savedRetType;
@@ -102,13 +176,21 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
 }
 
 void SemanticAnalyzer::visit(IfSttmt& node) {
-    if (node.Cond) node.Cond->accept(*this);
+    if (node.Cond) {
+        node.Cond->accept(*this);
+        if (node.Cond->ResolvedType == "vaziu")
+            addError(errLoc(node.LineNum) + "void expression cannot be used as a condition");
+    }
     if (node.Then) node.Then->accept(*this);
     if (node.Else) node.Else->accept(*this);
 }
 
 void SemanticAnalyzer::visit(WhileSttmt& node) {
-    if (node.Cond) node.Cond->accept(*this);
+    if (node.Cond) {
+        node.Cond->accept(*this);
+        if (node.Cond->ResolvedType == "vaziu")
+            addError(errLoc(node.LineNum) + "void expression cannot be used as a condition");
+    }
     ++LoopDepth;
     if (node.Do) node.Do->accept(*this);
     --LoopDepth;
@@ -117,20 +199,28 @@ void SemanticAnalyzer::visit(WhileSttmt& node) {
 void SemanticAnalyzer::visit(JumpSttmt& node) {
     // ReturnSttmt overrides this, so here we only see break/continue
     if (LoopDepth == 0)
-        addError("'" + node.Name + "' used outside a loop"
-                 + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
+        addError(errLoc(node.LineNum) + "'" + node.Name + "' used outside a loop");
 }
 
 void SemanticAnalyzer::visit(ReturnSttmt& node) {
-    // Make sure we are not returning a value from a void function
+    const std::string loc = errLoc(node.LineNum);
+
     if (!CurrFuncRetType.empty() && CurrFuncRetType == "vaziu" && node.ReturnValue)
-        addError("returning a value from void function '" + CurrFuncName + "'"
-                 + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
-    // Make sure we are returning a value from a non-void function
+        addError(loc + "returning a value from void function '" + CurrFuncName + "'");
+
     if (!CurrFuncRetType.empty() && CurrFuncRetType != "vaziu" && !node.ReturnValue)
-        addError("missing return value in non-void function '" + CurrFuncName + "'"
-                 + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
-    if (node.ReturnValue) node.ReturnValue->accept(*this);
+        addError(loc + "missing return value in non-void function '" + CurrFuncName + "'");
+
+    if (node.ReturnValue) {
+        node.ReturnValue->accept(*this);
+        const std::string& got = node.ReturnValue->ResolvedType;
+        if (!got.empty() && !CurrFuncRetType.empty()
+                && CurrFuncRetType != "vaziu"
+                && got != CurrFuncRetType
+                && !isWideningCoercion(got, CurrFuncRetType))
+            addError(loc + "returning '" + got + "' from function '" + CurrFuncName
+                     + "' declared as '" + CurrFuncRetType + "'");
+    }
 }
 
 void SemanticAnalyzer::visit(FuncCallArgs& node) {
@@ -141,15 +231,49 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     if (node.Args)
         for (auto& arg : node.Args->Args)
             if (arg) arg->accept(*this);
-    // Resolve return type from FunctionTable
+
     auto it = FunctionTable.find(node.Name);
-    if (it != FunctionTable.end())
-        node.ResolvedType = it->second;
+    if (it == FunctionTable.end()) {
+        addError(errLoc(node.LineNum) + "undeclared function '" + node.Name + "'");
+        return;
+    }
+
+    const FuncInfo& info = it->second;
+    node.ResolvedType = info.retType;
+
+    const std::string loc = errLoc(node.LineNum);
+    size_t got  = node.Args ? node.Args->Args.size() : 0;
+    size_t want = info.paramTypes.size();
+
+    if (got != want) {
+        addError(loc + "function '" + node.Name + "' expects " + std::to_string(want)
+                 + " argument(s), got " + std::to_string(got));
+        return; // type checks make no sense if counts differ
+    }
+
+    if (node.Args) {
+        for (size_t i = 0; i < node.Args->Args.size(); ++i) {
+            const std::string& argType   = node.Args->Args[i]->ResolvedType;
+            const std::string& paramType = info.paramTypes[i];
+            if (!argType.empty() && argType != paramType
+                    && !isWideningCoercion(argType, paramType))
+                addError(loc + "argument " + std::to_string(i + 1) + " of '" + node.Name
+                         + "': expected '" + paramType + "', got '" + argType + "'");
+        }
+    }
 }
 
 void SemanticAnalyzer::visit(BinExpr& node) {
     if (node.LHS) node.LHS->accept(*this);
     if (node.RHS) node.RHS->accept(*this);
+
+    const std::string lt = node.LHS ? node.LHS->ResolvedType : "";
+    const std::string rt = node.RHS ? node.RHS->ResolvedType : "";
+
+    if (lt == "vaziu")
+        addError(errLoc(node.LineNum) + "void expression cannot be used as an operand");
+    if (rt == "vaziu")
+        addError(errLoc(node.LineNum) + "void expression cannot be used as an operand");
 
     // Comparison and logical operators always yield bool
     static const std::unordered_set<std::string> boolOps = {
@@ -160,8 +284,6 @@ void SemanticAnalyzer::visit(BinExpr& node) {
         node.ResolvedType = "bool";
     } else {
         // Arithmetic: promote nter+num -> num, otherwise keep operand type
-        std::string lt = node.LHS ? node.LHS->ResolvedType : "";
-        std::string rt = node.RHS ? node.RHS->ResolvedType : "";
         if (lt == "num" || rt == "num")
             node.ResolvedType = "num";
         else if (!lt.empty())
@@ -188,8 +310,7 @@ void SemanticAnalyzer::visit(IdentExpr& node) {
     // has at least 2 levels: top-level scope + function scope).
     if (SymbolScopes.size() >= 2) {
         if (!lookupVar(node.Name))
-            addError("undefined variable name '" + node.Name + "'"
-                     + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
+            addError(errLoc(node.LineNum) + "undefined variable name '" + node.Name + "'");
     }
     auto t = lookupVar(node.Name);
     if (t) node.ResolvedType = *t;
@@ -212,7 +333,11 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
 
 void SemanticAnalyzer::visit(ForSttmt& node) {
     if (node.Start) node.Start->accept(*this);
-    if (node.Cond)  node.Cond->accept(*this);
+    if (node.Cond) {
+        node.Cond->accept(*this);
+        if (node.Cond->ResolvedType == "vaziu")
+            addError(errLoc(node.LineNum) + "void expression cannot be used as a condition");
+    }
     ++LoopDepth;
     if (node.Then)  node.Then->accept(*this);
     --LoopDepth;
@@ -231,42 +356,15 @@ void SemanticAnalyzer::visit(ImportSttmt& node) {
 }
 
 void SemanticAnalyzer::visit(FStringExpr& node) {
-    std::string raw = node.Value;
-
-    if (raw.size() >= 3) {
-        // strip the prefix f and surrounding quotes
-        raw = raw.substr(2, raw.size() - 3);
-    }
-
-    size_t i = 0;
-    while (i < raw.size()) {
-        if (raw[i] == '\\' && (i + 1 < raw.size())) {
-            i += 2; // skip escape sequence
-        } else if (raw[i] == '{') {
-            // Collect identifier name up to closing '}'
-            size_t end = raw.find('}', i + 1);
-            if (end == std::string::npos) {
-                addError("f-string has unclosed '{'" +
-                         (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
-                break;
-            }
-
-            std::string varName = raw.substr(i + 1, end - i - 1);
-
-            // trim leading/trailing whitespace
-            auto s = varName.find_first_not_of(' ');
-            auto e = varName.find_last_not_of(' ');
-            varName = (s == std::string::npos) ? "" : varName.substr(s, e - s + 1);
-
-            if (varName.empty())
-                addError("f-string has empty '{}' placeholder" +
-                         (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
-            else if (!lookupVar(varName))
-                addError("f-string references undefined variable '" + varName + "'" +
-                         (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
-            i = end + 1;
-        } else {
-            ++i;
+    static const std::unordered_set<std::string> printableTypes = {
+        "nter", "num", "bool", "textu"
+    };
+    for (auto& seg : node.Parts) {
+        if (seg.expr) {
+            seg.expr->accept(*this);
+            const std::string& t = seg.expr->ResolvedType;
+            if (!t.empty() && !printableTypes.count(t))
+                addError(errLoc(node.LineNum) + "f-string interpolation: cannot format value of type '" + t + "'");
         }
     }
     node.ResolvedType = "textu";
@@ -287,7 +385,7 @@ void SemanticAnalyzer::visit(SaiSttmt& node) {
         if (t != "nter") {
             std::string err = "sai() expects an integer exit code";
             if (!t.empty()) err += ", got value of type '" + t + "'";
-            addError(err + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
+            addError(errLoc(node.LineNum) + err);
         }
     }
 }
@@ -299,7 +397,7 @@ void SemanticAnalyzer::visit(KonfirmaSttmt& node) {
         if (t != "bool" && t != "nter" && t != "num") {
             std::string err = "konfirma() expects a boolean condition";
             if (!t.empty()) err += ", got value of type '" + t + "'";
-            addError(err + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
+            addError(errLoc(node.LineNum) + err);
         }
     };
 }

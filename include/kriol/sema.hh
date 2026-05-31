@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <optional>
 
 namespace kriol {
@@ -17,8 +18,14 @@ namespace sema {
         // Scoped symbol table: each entry is one scope level (name -> Kriol type)
         std::vector<std::unordered_map<std::string, std::string>> SymbolScopes;
 
-        // Known user-defined functions (name -> return type)
-        std::unordered_map<std::string, std::string> FunctionTable;
+        // Signature record for a user-defined function
+        struct FuncInfo {
+            std::string retType;
+            std::vector<std::string> paramTypes;
+        };
+
+        // Known user-defined functions (name -> signature)
+        std::unordered_map<std::string, FuncInfo> FunctionTable;
 
         // Return type of the function currently being analysed ("" at top level)
         std::string CurrFuncRetType;
@@ -29,6 +36,15 @@ namespace sema {
 
         // Collected errors
         std::vector<std::string> Errors;
+
+        // Source file name, used for error location prefixes
+        std::string SourceFile;
+
+        // Returns "file:line: " prefix for error messages, or "file: " if line is 0.
+        std::string errLoc(int lineNum) const {
+            if (lineNum == 0) return SourceFile.empty() ? "" : SourceFile + ": ";
+            return (SourceFile.empty() ? "" : SourceFile + ":") + std::to_string(lineNum) + ": ";
+        }
 
         // --- scope helpers ---
         void pushScope() { SymbolScopes.push_back({}); }
@@ -53,6 +69,22 @@ namespace sema {
         // returning is recognised as a definite return.
         bool blockDefinitelyReturns(ast::BlockSttmt* block) const;
 
+        // Returns true if assigning/returning `from` where `to` is expected
+        // is a legal implicit widening (nter->num, bool->nter, bool->num).
+        static bool isWideningCoercion(const std::string& from, const std::string& to);
+
+        // Pre-registers a function's full signature into FunctionTable without
+        // visiting the body. Called in the first pass of Check().
+        void registerFuncSignature(ast::FuncDeclSttmt& node);
+
+
+        // Checks if a name is reserved and cannot be declared (used for variables, parameters, functions).
+        static bool isReservedKeyword(const std::string& name);
+
+        // Checks if a name is reserved and cannot be declared, and if so adds an error.
+        bool checkDeclaredNameValid(const std::string& name, const std::string& kind, int lineNum);
+
+        // Adds an error message to the error list
         void addError(const std::string& msg) { Errors.push_back(msg); }
 
     public:
@@ -63,6 +95,9 @@ namespace sema {
 
         bool HasErrors() const { return !Errors.empty(); }
         const std::vector<std::string>& GetErrors() const { return Errors; }
+
+        // Sets the source filename included in error location prefixes.
+        void SetSourceFile(const std::string& f) { SourceFile = f; }
 
         // --- visitor overrides ---
         void visit(ast::VarDeclSttmt&      node) override;
