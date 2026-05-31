@@ -16,12 +16,12 @@ The file extension of the KriolLang programming language is **.kl** (representin
 
 ## Installation
 
-It isn't installable on any OS yet, but it still can be tested using a Unix-based operating system. It depends on **clang** and **clang++** to compile the source code, and **bison** and **flex** to compile the language rules.
+It isn't installable on any OS yet, but it still can be tested using a Unix-based operating system. It depends on **clang-19**, **clang++-19**, and **llvm-19** to compile the source code and link user programs, and **bison** and **flex** to compile the language rules.
 
 If you are on a Debian (or Ubuntu) based Linux operating system you can install the dependencies using the following command:
 
 ```bash
-apt install make flex bison clang clang++ llvm-19 llvm-19-dev
+apt install make flex bison clang-19 clang++-19 llvm-19 llvm-19-dev
 ```
 
 NOTE: now pre-generated parser and scanner codes are provided in the repository, so, **flex** and **bison** can be omitted from the installation above, but if you are planning to make changes to the parser or scanner rules, they will still be necessary.

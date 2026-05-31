@@ -2,8 +2,8 @@
 
 .PHONY: kriol debug release clean test
 
-CC = clang++
-CC_C = clang
+CC = clang++-19
+CC_C = clang-19
 
 OUTPUT = kriol
 
