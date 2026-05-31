@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo add-apt-repository universe -y
+          sudo apt-get update -q
+          sudo apt-get install -y make flex bison clang clang++ llvm-19 llvm-19-dev
+
+      - name: Build release
+        run: make release
+
+      - name: Stage artifacts
+        run: |
+          STAGEDIR="kriol-${{ github.ref_name }}-linux-x86_64"
+          mkdir -p "$STAGEDIR/runtime"
+          cp kriol "$STAGEDIR/"
+          cp runtime/kriol_runtime.o "$STAGEDIR/runtime/"
+
+      - name: Pack archives
+        run: |
+          STAGEDIR="kriol-${{ github.ref_name }}-linux-x86_64"
+          tar -czf "${STAGEDIR}.tar.gz" "$STAGEDIR"
+          tar -cJf "${STAGEDIR}.tar.xz" "$STAGEDIR"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            kriol-${{ github.ref_name }}-linux-x86_64.tar.gz
+            kriol-${{ github.ref_name }}-linux-x86_64.tar.xz
