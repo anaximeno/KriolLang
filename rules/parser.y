@@ -33,24 +33,25 @@
 %destructor { delete $$; } <string> <integer> <floatingpoint>
 %destructor { delete $$; } <expr> <sttmt> <block> <vardecl> <params> <args> <litexpr>
 
-%token<string> IDENT STR_LIT FSTR_LIT
-%token<token> MOSTRA MOSTRAN
+%token<string> IDENT STR_LIT FSTR_TEXT
+%token<token> MOSTRA "mostra" MOSTRAN "mostran"
 %token<integer> INT_LIT
 %token<floatingpoint> FLOAT_LIT
 %token<string> BOOL_LIT
-%token<token>  PLUS MINUS MUL DIV
-%token<token>  EQ  NE  LT LE GT GE
-%token<token>  AND OR ASSIGN LCURLY RCURLY COMMA SEMIC LBRAC RBRAC
+%token<token>  PLUS "+" MINUS "-" MUL "*" DIV "/"
+%token<token>  EQ "=="  NE "!="  LT "<" LE "<=" GT ">" GE ">="
+%token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," SEMIC ";" LBRAC "[" RBRAC "]"
 %token<string> TYPE_NUM TYPE_BOOL TYPE_VOID TYPE_NTER TYPE_TEXTU
-%token<token>  DIVOLVI PA STRUT
-%token<token>  NKUANTU SI SINON IMPRISTAN
-%token<token> PARA CONTINUA DOT RPAR LPAR
-%token<token> FN NOT SAI KONFIRMA
+%token<token>  DIVOLVI "divolvi" PA "pa"
+%token<token>  NKUANTU "nkuantu" SI "si" SINON "sinon" IMPRISTAN "inpristan"
+%token<token> PARA "para" CONTINUA "kontinua" DOT "." RPAR ")" LPAR "("
+%token<token> FN "fn" NOT "!" SAI "sai" KONFIRMA "konfirma"
+%token<token> FSTR_START "f-string" FSTR_END "end of f-string" FSTR_LBRACE "start of interpolation" FSTR_RBRACE "end of interpolation"
 
 %type<expr> expression assignment_expression function_call primary_expression
             constant_expression constant logical_or_expressions logical_and_expressions
             equality_expression relational_expression additive_expression multiplicative_expression
-            unary_expression initializer mostra_func_call
+            unary_expression initializer mostra_func_call fstring fstring_parts
 %type<sttmt> expression_statement selection_statement iteration_statement jump_statement
              function_declaration declaration statement import_statement
 %type<block> compound_statement statements else_then
@@ -85,8 +86,17 @@ constant : INT_LIT   { auto lit = new ast::LiteralExpr("nter",  *$1); lit->LineN
          | FLOAT_LIT { auto lit = new ast::LiteralExpr("num",   *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
          | BOOL_LIT  { auto lit = new ast::LiteralExpr("bool",  *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
          | STR_LIT   { auto lit = new ast::LiteralExpr("char*", *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
-         | FSTR_LIT  { auto fs = new ast::FStringExpr(*$1); fs->LineNum = yylineno; $$ = fs; delete $1; }
+         | fstring   { $$ = $1; }
          ;
+
+fstring : FSTR_START fstring_parts FSTR_END { $$ = $2; }
+        ;
+
+fstring_parts
+    : %empty { auto fs = new ast::FStringExpr(); fs->LineNum = yylineno; $$ = fs; }
+    | fstring_parts FSTR_TEXT { static_cast<ast::FStringExpr*>($1)->addText(*$2); delete $2; $$ = $1; }
+    | fstring_parts FSTR_LBRACE constant_expression FSTR_RBRACE { static_cast<ast::FStringExpr*>($1)->addExpr(std::unique_ptr<ast::Expr>($3)); $$ = $1; }
+    ;
 
 identifier : IDENT { $$ = $1; }
            ;
@@ -241,5 +251,5 @@ jump_statement : PARA SEMIC { auto n = new ast::JumpSttmt("break"); n->LineNum =
 %%
 
 void yyerror(kriol::ast::BlockSttmt** Program, const char* err) {
-    kriol::cli::PrintErr(err, 1);
+    kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, err, 1);
 }

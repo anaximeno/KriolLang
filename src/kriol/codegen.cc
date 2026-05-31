@@ -202,7 +202,8 @@ void CodeGenVisitor::emitNative(const std::string& outputPath, const char* argv0
 #endif
         "-o",
         outputPath,
-        "-lm"
+        "-lm",
+        "-lgc"
     };
 
     std::string linkErr;
@@ -267,7 +268,35 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     LastValue = nullptr;
 }
 
+void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
+    bool isMain   = (node.Name == "inisiu");
+    std::string name = isMain ? "main" : node.Name;
+
+    // already declared
+    if (Mod->getFunction(name)) return;
+
+    std::vector<llvm::Type*> paramTypes;
+    if (node.Args)
+        for (auto& arg : node.Args->Args)
+            paramTypes.push_back(mapType(arg->Type));
+
+    llvm::Type* retTy = isMain
+        ? llvm::Type::getInt32Ty(Context)
+        : mapType(node.Type);
+
+    auto* ftype = llvm::FunctionType::get(retTy, paramTypes, false);
+    llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
+}
+
 void CodeGenVisitor::visit(BlockSttmt& node) {
+    // At program root forward-declare all user functions
+    // so that forward calls and mutual recursion resolve in codegen.
+    if (!CurrentFunction) {
+        for (auto& s : node.SttmtList)
+            if (auto* fn = dynamic_cast<FuncDeclSttmt*>(s.get()))
+                forwardDeclareFunc(*fn);
+    }
+
     pushScope();
     for (auto& s : node.SttmtList)
         if (s) s->accept(*this);
@@ -276,6 +305,15 @@ void CodeGenVisitor::visit(BlockSttmt& node) {
 
 void CodeGenVisitor::visit(FuncArgs& node) {
     // Handled inside FuncDeclSttmt
+}
+
+// Declare (or retrieve) __kriol_gc_init -> void __kriol_gc_init(void)
+static llvm::Function* getOrDeclareKriolGcInit(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("__kriol_gc_init")) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_gc_init", Mod);
 }
 
 void CodeGenVisitor::visit(FuncDeclSttmt& node) {
@@ -291,9 +329,13 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
         ? llvm::Type::getInt32Ty(Context)
         : mapType(node.Type);
 
-    auto* ftype = llvm::FunctionType::get(retTy, paramTypes, false);
-    auto* fn    = llvm::Function::Create(
-        ftype, llvm::Function::ExternalLinkage, name, *Mod);
+    // Get the function if it was already forward-declared, otherwise create it now.
+    auto* fn = Mod->getFunction(name);
+
+    if (!fn) {
+        auto* ftype = llvm::FunctionType::get(retTy, paramTypes, false);
+        fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
+    }
 
     if (node.Args) {
         size_t i = 0;
@@ -315,6 +357,12 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
             Builder->CreateStore(&llvmArg, a);
             declareVar(p->Name, a);
         }
+    }
+
+    // Initialise the Boehm GC as the very first thing in main.
+    if (isMain) {
+        auto* gcInit = getOrDeclareKriolGcInit(*Mod, Context);
+        Builder->CreateCall(gcInit, {});
     }
 
     // Emit deferred global initializers at the top of inisiu (main)
@@ -426,6 +474,10 @@ void CodeGenVisitor::visit(JumpSttmt& node) {
 void CodeGenVisitor::visit(ReturnSttmt& node) {
     if (node.ReturnValue) {
         node.ReturnValue->accept(*this);
+        // Coerce to the function's declared return type (e.g. nter -> num widening)
+        llvm::Type* retTy = Builder->GetInsertBlock()->getParent()->getReturnType();
+        if (LastValue && LastValue->getType() != retTy)
+            LastValue = coerce(LastValue, retTy);
         Builder->CreateRet(LastValue);
     } else {
         Builder->CreateRetVoid();
@@ -658,84 +710,35 @@ static llvm::Function* getOrDeclareKriolFormat(llvm::Module& Mod, llvm::LLVMCont
 }
 
 void CodeGenVisitor::visit(FStringExpr& node) {
-    std::string raw = node.Value;
-
-    if (raw.size() >= 3) {
-        // Strip f prefix and surrounding quotes
-        raw = raw.substr(2, raw.size() - 3);
-    }
-
     std::string fmtStr;
     std::vector<llvm::Value*> callArgs;
 
-    size_t i = 0;
-    while (i < raw.size()) {
-        char c = raw[i];
-        if (c == '\\' && i + 1 < raw.size()) {
-            char next = raw[i + 1];
-            switch (next) {
-                case '{':  fmtStr += '{';  i += 2; break;
-                case '}':  fmtStr += '}';  i += 2; break;
-                case 'n':  fmtStr += '\n'; i += 2; break;
-                case 't':  fmtStr += '\t'; i += 2; break;
-                case 'r':  fmtStr += '\r'; i += 2; break;
-                case '\\': fmtStr += '\\'; i += 2; break;
-                case '"':  fmtStr += '"';  i += 2; break;
-                case '\'': fmtStr += '\''; i += 2; break;
-                case '0':  fmtStr += '\0'; i += 2; break;
-                default:   fmtStr += '\\'; fmtStr += next; i += 2; break;
+    for (auto& seg : node.Parts) {
+        if (!seg.expr) { // Literal text
+            std::string text = processEscapes(seg.text);
+            for (char c : text) {
+                if (c == '%') fmtStr += '%';
+                fmtStr += c;
             }
-        } else if (c == '{') {
-            size_t end = raw.find('}', i + 1);
+        } else { // Interpolated expression
+            seg.expr->accept(*this);
+            llvm::Value* val = LastValue;
+            if (!val) continue;
 
-            // malformed or empty {}, semantic analyzer should handle. skip the placeholder entirely.
-            if (end == std::string::npos) { ++i; continue; }
+            std::string kriolType = seg.expr->ResolvedType;
+            if (kriolType.empty()) kriolType = llvmTypeToKriol(val->getType());
 
-            std::string name = raw.substr(i + 1, end - i - 1);
-
-            // trim leading/trailing whitespace
-            auto ns = name.find_first_not_of(' ');
-            auto ne = name.find_last_not_of(' ');
-            name = (ns == std::string::npos) ? "" : name.substr(ns, ne - ns + 1);
-
-            // empty name, semantic analyzer should handle. skip the placeholder entirely.
-            if (name.empty()) { i = end + 1; continue; }
-
-            auto* alloca = lookupVar(name);
-            llvm::Value* val = nullptr;
-            std::string kriolType;
-
-            if (alloca) {
-                llvm::Type* ty = alloca->getAllocatedType();
-                kriolType = llvmTypeToKriol(ty);
-                val = Builder->CreateLoad(ty, alloca, name);
-            } else if (auto* gv = lookupGlobal(name)) {
-                llvm::Type* ty = gv->getValueType();
-                kriolType = llvmTypeToKriol(ty);
-                val = Builder->CreateLoad(ty, gv, name);
-            }
-
-            if (val) {
-                if (kriolType == "bool") {
-                    llvm::Value* ext = val->getType()->isIntegerTy(1)
-                        ? Builder->CreateZExt(val, llvm::Type::getInt32Ty(Context))
-                        : val;
-                    val = Builder->CreateCall(
-                        getOrDeclareKriolBoolToStr(*Mod, Context), {ext}, "bool_str");
-                    fmtStr += "%s";
-                } else {
-                    fmtStr += fmtSpec(kriolType);
-                }
-                callArgs.push_back(val);
+            if (kriolType == "bool") {
+                auto* i32Ty = llvm::Type::getInt32Ty(Context);
+                llvm::Value* ext = val->getType()->isIntegerTy(1)
+                    ? Builder->CreateZExt(val, i32Ty) : val;
+                val = Builder->CreateCall(
+                    getOrDeclareKriolBoolToStr(*Mod, Context), {ext}, "bool_str");
+                fmtStr += "%s";
             } else {
                 fmtStr += fmtSpec(kriolType);
             }
-            i = end + 1;
-        } else {
-            // Escape literal % signs so they pass through printf unchanged
-            if (c == '%') fmtStr += '%';
-            fmtStr += c;
-            ++i;
+            callArgs.push_back(val);
         }
     }
 
@@ -793,7 +796,7 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
 }
 
 void CodeGenVisitor::visit(ImportSttmt& node) {
-    // C #include directives have no LLVM IR equivalent; skipped.
+    // TODO: Implement module imports
 }
 
 void CodeGenVisitor::visit(UnaryExpr& node) {

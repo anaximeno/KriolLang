@@ -21,6 +21,12 @@ namespace kriol
         void PrintErr(std::string message);
         /// Prints an error message to the stderr and exits returning the `exitNum`
         void PrintErr(std::string message, int exitNum);
+        /// Prints a source-located error message (file:line: msg) and optionally exits
+        void PrintErr(const std::string& file, int line, const std::string& msg, int exitNum = -1);
+        /// Sets the source filename used by PrintErr and yyerror for location context
+        void SetSourceFile(const std::string& filename);
+        /// Returns the currently active source filename
+        const std::string& GetSourceFile();
         /// Exectutes a command on the terminal
         void ExecuteCommand(std::string command);
         /// Encodes a string to hexadecimal string

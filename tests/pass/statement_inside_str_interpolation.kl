@@ -1,0 +1,6 @@
+fn inisiu() {
+    mostran(f"1 + 1 = {1 + 1}");
+    nter a = 90;
+    nter b = 20;
+    mostran(f"{a} + {b} = {a + b}");
+}

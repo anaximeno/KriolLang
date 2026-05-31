@@ -1,0 +1,8 @@
+fn tonum(nter x) num {
+    divolvi x;
+}
+
+fn inisiu() {
+    num resultado = tonum(7);
+    mostran(resultado);
+}

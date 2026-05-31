@@ -1,4 +1,4 @@
-%option noyywrap yylineno
+%option noyywrap yylineno stack
 
 %{
     #include "include/kriol/ast.hh"
@@ -16,6 +16,8 @@
     #define TOKENIZE(sym) (yylval.token   = sym)
 
     int yyerror(char const*);
+
+    static int g_fstr_depth = 0;
 %}
 
 INT [+|-]?[0-9]+
@@ -27,8 +29,7 @@ IDENT [a-zA-Z_][a-zA-Z0-9_]*
 STRING_DQ   ["]([^"\\\n]|\\.|\\\n)*["]
 STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 
-FSTR_DQ     f["]([^"\\\n]|\\.|\\\n)*["]
-FSTR_SQ     f[']([^'\\\n]|\\.|\\\n)*[']
+%x FSTRING_DQ FSTRING_SQ
 
 %%
 
@@ -66,7 +67,7 @@ FSTR_SQ     f[']([^'\\\n]|\\.|\\\n)*[']
 ","             return TOKENIZE(COMMA);
 ";"             return TOKENIZE(SEMIC);
 "{"             return TOKENIZE(LCURLY);
-"}"             return TOKENIZE(RCURLY);
+"}"             { if (g_fstr_depth > 0) { --g_fstr_depth; yy_pop_state(); return TOKENIZE(FSTR_RBRACE); } return TOKENIZE(RCURLY); }
 "["             return TOKENIZE(LBRAC);
 "]"             return TOKENIZE(RBRAC);
 "="             return TOKENIZE(ASSIGN);
@@ -83,16 +84,30 @@ FSTR_SQ     f[']([^'\\\n]|\\.|\\\n)*[']
 {INT}           SAVE_TOKEN;   return INT_LIT;
 {FLOAT}         SAVE_TOKEN;   return FLOAT_LIT;
 {IDENT}         SAVE_TOKEN;   return IDENT;
-{FSTR_DQ}       SAVE_TOKEN;   return FSTR_LIT;
-{FSTR_SQ}       SAVE_TOKEN;   return FSTR_LIT;
+f["]            { yy_push_state(FSTRING_DQ); return TOKENIZE(FSTR_START); }
+f[']            { yy_push_state(FSTRING_SQ); return TOKENIZE(FSTR_START); }
 {STRING_DQ}     SAVE_TOKEN;   return STR_LIT;
 {STRING_SQ}     SAVE_TOKEN;   return STR_LIT;
 
+<FSTRING_DQ>{
+    "\""                  { yy_pop_state(); return TOKENIZE(FSTR_END); }
+    "{"                   { ++g_fstr_depth; yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
+    ([^"{\\\n]|\\.)+      { SAVE_TOKEN; return FSTR_TEXT; }
+    <<EOF>>               { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unterminated f-string", 1); }
+    .|\n                  { /* skip unrecognised char inside f-string */ }
+}
+
+<FSTRING_SQ>{
+    "'"                   { yy_pop_state(); return TOKENIZE(FSTR_END); }
+    "{"                   { ++g_fstr_depth; yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
+    ([^'{\\\n]|\\.)+      { SAVE_TOKEN; return FSTR_TEXT; }
+    <<EOF>>               { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unterminated f-string", 1); }
+    .|\n                  { /* skip unrecognised char inside f-string */ }
+}
+
 . {
-    kriol::cli::PrintErr(
-        "Unknown token " + std::string(yytext) +
-        " at line " + std::to_string(yylineno)
-    );
+    kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno,
+        "unknown token '" + std::string(yytext) + "'", 1);
 }
 
 %%
