@@ -39,7 +39,7 @@ namespace sema {
         // Source file name, used for error location prefixes
         std::string SourceFile;
 
-        // Returns "file:line: " prefix for error messages, or "" if line is 0.
+        // Returns "file:line: " prefix for error messages, or "file: " if line is 0.
         std::string errLoc(int lineNum) const {
             if (lineNum == 0) return SourceFile.empty() ? "" : SourceFile + ": ";
             return (SourceFile.empty() ? "" : SourceFile + ":") + std::to_string(lineNum) + ": ";

@@ -48,7 +48,7 @@ void cli::PrintErr(std::string message, int exitNum)
 
 void cli::PrintErr(const std::string& file, int line, const std::string& msg, int exitNum) {
     std::string location = file.empty() ? "" : file + ":" + std::to_string(line) + ": ";
-    std::cerr << KL_STANDARD_COMPILER_NAME << "err: " << location << msg << std::endl;
+    std::cerr << KL_STANDARD_COMPILER_NAME << ": err: " << location << msg << std::endl;
     if (exitNum >= 0) exit(exitNum);
 }
 
