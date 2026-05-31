@@ -1,0 +1,7 @@
+fn printHello() vaziu {
+    mostran("Hello");
+}
+
+fn inisiu() {
+    nter x = 1 + printHello();
+}

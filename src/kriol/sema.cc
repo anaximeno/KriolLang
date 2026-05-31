@@ -83,7 +83,11 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
         }
         declareVar(node.Name, node.Type);
     }
-    if (node.Value) node.Value->accept(*this);
+    if (node.Value) {
+        node.Value->accept(*this);
+        if (!node.Value->ResolvedType.empty() && node.Value->ResolvedType == "vaziu")
+            addError(errLoc(node.LineNum) + "cannot assign void expression to variable '" + node.Name + "'");
+    }
 }
 
 void SemanticAnalyzer::visit(BlockSttmt& node) {
@@ -133,13 +137,21 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
 }
 
 void SemanticAnalyzer::visit(IfSttmt& node) {
-    if (node.Cond) node.Cond->accept(*this);
+    if (node.Cond) {
+        node.Cond->accept(*this);
+        if (node.Cond->ResolvedType == "vaziu")
+            addError(errLoc(node.LineNum) + "void expression cannot be used as a condition");
+    }
     if (node.Then) node.Then->accept(*this);
     if (node.Else) node.Else->accept(*this);
 }
 
 void SemanticAnalyzer::visit(WhileSttmt& node) {
-    if (node.Cond) node.Cond->accept(*this);
+    if (node.Cond) {
+        node.Cond->accept(*this);
+        if (node.Cond->ResolvedType == "vaziu")
+            addError(errLoc(node.LineNum) + "void expression cannot be used as a condition");
+    }
     ++LoopDepth;
     if (node.Do) node.Do->accept(*this);
     --LoopDepth;
@@ -213,6 +225,14 @@ void SemanticAnalyzer::visit(BinExpr& node) {
     if (node.LHS) node.LHS->accept(*this);
     if (node.RHS) node.RHS->accept(*this);
 
+    const std::string lt = node.LHS ? node.LHS->ResolvedType : "";
+    const std::string rt = node.RHS ? node.RHS->ResolvedType : "";
+
+    if (lt == "vaziu")
+        addError(errLoc(node.LineNum) + "void expression cannot be used as an operand");
+    if (rt == "vaziu")
+        addError(errLoc(node.LineNum) + "void expression cannot be used as an operand");
+
     // Comparison and logical operators always yield bool
     static const std::unordered_set<std::string> boolOps = {
         "==", "!=", "<", "<=", ">", ">=", "&&", "||"
@@ -222,8 +242,6 @@ void SemanticAnalyzer::visit(BinExpr& node) {
         node.ResolvedType = "bool";
     } else {
         // Arithmetic: promote nter+num -> num, otherwise keep operand type
-        std::string lt = node.LHS ? node.LHS->ResolvedType : "";
-        std::string rt = node.RHS ? node.RHS->ResolvedType : "";
         if (lt == "num" || rt == "num")
             node.ResolvedType = "num";
         else if (!lt.empty())
@@ -273,7 +291,11 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
 
 void SemanticAnalyzer::visit(ForSttmt& node) {
     if (node.Start) node.Start->accept(*this);
-    if (node.Cond)  node.Cond->accept(*this);
+    if (node.Cond) {
+        node.Cond->accept(*this);
+        if (node.Cond->ResolvedType == "vaziu")
+            addError(errLoc(node.LineNum) + "void expression cannot be used as a condition");
+    }
     ++LoopDepth;
     if (node.Then)  node.Then->accept(*this);
     --LoopDepth;

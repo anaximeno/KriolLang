@@ -48,7 +48,7 @@
 %token<token> FN "fn" NOT "!" SAI "sai" KONFIRMA "konfirma"
 %token<token> FSTR_START "f-string" FSTR_END "end of f-string" FSTR_LBRACE "start of interpolation" FSTR_RBRACE "end of interpolation"
 
-%type<expr> expression assignment_expression function_call primary_expression
+%type<expr> expression assignment_expression primary_expression
             constant_expression constant logical_or_expressions logical_and_expressions
             equality_expression relational_expression additive_expression multiplicative_expression
             unary_expression initializer mostra_func_call fstring fstring_parts
@@ -115,7 +115,6 @@ initializer : expression { $$ = $1; }
             ;
 
 expression : assignment_expression { $$ = $1; }
-           | function_call { $$ = $1; }
            ;
 
 constant_expression : logical_or_expressions { $$ = $1; }
@@ -156,9 +155,12 @@ unary_expression : primary_expression                          { $$ = $1; }
                  | MINUS unary_expression %prec UMINUS          { auto n = new ast::UnaryExpr("-", std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
                  ;
 
-primary_expression : identifier { auto n = new ast::IdentExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
-                   | constant { $$ = $1; }
-                   | LPAR expression RPAR { auto n = new ast::ParExpr(std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
+primary_expression : IDENT LPAR argument_list RPAR { auto n = new ast::FunCallExpr(*$1, std::unique_ptr<ast::FuncCallArgs>($3)); n->LineNum = yylineno; $$ = n; delete $1; }
+                   | IDENT LPAR RPAR               { auto n = new ast::FunCallExpr(*$1, nullptr); n->LineNum = yylineno; $$ = n; delete $1; }
+                   | mostra_func_call               { $$ = $1; }
+                   | IDENT                          { auto n = new ast::IdentExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
+                   | constant                       { $$ = $1; }
+                   | LPAR expression RPAR           { auto n = new ast::ParExpr(std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
                    ;
 
 assignment_expression : constant_expression { $$ = $1; }
@@ -185,11 +187,6 @@ parameter_declaration : type_specifier declarator { $$ = new ast::VarDeclSttmt(*
 
 argument_list : argument_list COMMA expression { $1->AddArg(std::unique_ptr<ast::Expr>($3)); $$ = $1; }
               | expression { $$ = new ast::FuncCallArgs(); $$->AddArg(std::unique_ptr<ast::Expr>($1)); }
-              ;
-
-function_call : identifier LPAR argument_list RPAR { auto n = new ast::FunCallExpr(*$1, std::unique_ptr<ast::FuncCallArgs>($3)); n->LineNum = yylineno; $$ = n; delete $1; }
-              | identifier LPAR RPAR { auto n = new ast::FunCallExpr(*$1, nullptr); n->LineNum = yylineno; $$ = n; delete $1; }
-              | mostra_func_call { $$ = $1; }
               ;
 
 mostra_func_call : MOSTRA LPAR argument_list RPAR { auto n = new ast::MostraFunCallExpr(std::unique_ptr<ast::FuncCallArgs>($3)); n->LineNum = yylineno; $$ = n; }

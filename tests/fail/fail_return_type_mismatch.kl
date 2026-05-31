@@ -1,7 +1,13 @@
 fn inisiu() {
-    mostran(f"{dobra(3)}");
+    nter a = 3;
+    si dobra(a) == 6 {
+        nter aa = dobra(a);
+        mostran(f"{aa}");
+    } sinon {
+        mostran("Nau");
+    }
 }
 
 fn dobra(nter x) nter {
-    divolvi f"nau e um nter";
+    divolvi 3 * 2;
 }
