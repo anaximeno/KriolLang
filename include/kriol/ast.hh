@@ -263,9 +263,14 @@ namespace ast {
 
     class FStringExpr : public Expr {
     public:
-        std::string Value;
+        struct Segment {
+            std::string text;
+            std::unique_ptr<Expr> expr;
+        };
+        std::vector<Segment> Parts;
 
-        FStringExpr(std::string Value) : Value(std::move(Value)) {}
+        void addText(const std::string& t) { Parts.push_back({t, nullptr}); }
+        void addExpr(std::unique_ptr<Expr> e) { Parts.push_back({"", std::move(e)}); }
         void accept(Visitor& v) override { v.visit(*this); }
     };
 

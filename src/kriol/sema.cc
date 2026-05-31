@@ -231,42 +231,16 @@ void SemanticAnalyzer::visit(ImportSttmt& node) {
 }
 
 void SemanticAnalyzer::visit(FStringExpr& node) {
-    std::string raw = node.Value;
-
-    if (raw.size() >= 3) {
-        // strip the prefix f and surrounding quotes
-        raw = raw.substr(2, raw.size() - 3);
-    }
-
-    size_t i = 0;
-    while (i < raw.size()) {
-        if (raw[i] == '\\' && (i + 1 < raw.size())) {
-            i += 2; // skip escape sequence
-        } else if (raw[i] == '{') {
-            // Collect identifier name up to closing '}'
-            size_t end = raw.find('}', i + 1);
-            if (end == std::string::npos) {
-                addError("f-string has unclosed '{'" +
-                         (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
-                break;
-            }
-
-            std::string varName = raw.substr(i + 1, end - i - 1);
-
-            // trim leading/trailing whitespace
-            auto s = varName.find_first_not_of(' ');
-            auto e = varName.find_last_not_of(' ');
-            varName = (s == std::string::npos) ? "" : varName.substr(s, e - s + 1);
-
-            if (varName.empty())
-                addError("f-string has empty '{}' placeholder" +
-                         (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
-            else if (!lookupVar(varName))
-                addError("f-string references undefined variable '" + varName + "'" +
-                         (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
-            i = end + 1;
-        } else {
-            ++i;
+    static const std::unordered_set<std::string> printableTypes = {
+        "nter", "num", "bool", "textu"
+    };
+    for (auto& seg : node.Parts) {
+        if (seg.expr) {
+            seg.expr->accept(*this);
+            const std::string& t = seg.expr->ResolvedType;
+            if (!t.empty() && !printableTypes.count(t))
+                addError("f-string interpolation: cannot format value of type '" + t + "'"
+                         + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
         }
     }
     node.ResolvedType = "textu";

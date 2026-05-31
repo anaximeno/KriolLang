@@ -56,7 +56,7 @@ extern int yydebug;
     YYUNDEF = 257,                 /* "invalid token"  */
     IDENT = 258,                   /* IDENT  */
     STR_LIT = 259,                 /* STR_LIT  */
-    FSTR_LIT = 260,                /* FSTR_LIT  */
+    FSTR_TEXT = 260,               /* FSTR_TEXT  */
     MOSTRA = 261,                  /* MOSTRA  */
     MOSTRAN = 262,                 /* MOSTRAN  */
     INT_LIT = 263,                 /* INT_LIT  */
@@ -102,7 +102,11 @@ extern int yydebug;
     NOT = 303,                     /* NOT  */
     SAI = 304,                     /* SAI  */
     KONFIRMA = 305,                /* KONFIRMA  */
-    UMINUS = 306                   /* UMINUS  */
+    FSTR_START = 306,              /* FSTR_START  */
+    FSTR_END = 307,                /* FSTR_END  */
+    FSTR_LBRACE = 308,             /* FSTR_LBRACE  */
+    FSTR_RBRACE = 309,             /* FSTR_RBRACE  */
+    UMINUS = 310                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -125,7 +129,7 @@ union YYSTYPE
     kriol::ast::FuncCallArgs* args;
     kriol::ast::LiteralExpr* litexpr;
 
-#line 129 "parser.hh"
+#line 133 "parser.hh"
 
 };
 typedef union YYSTYPE YYSTYPE;

@@ -658,84 +658,35 @@ static llvm::Function* getOrDeclareKriolFormat(llvm::Module& Mod, llvm::LLVMCont
 }
 
 void CodeGenVisitor::visit(FStringExpr& node) {
-    std::string raw = node.Value;
-
-    if (raw.size() >= 3) {
-        // Strip f prefix and surrounding quotes
-        raw = raw.substr(2, raw.size() - 3);
-    }
-
     std::string fmtStr;
     std::vector<llvm::Value*> callArgs;
 
-    size_t i = 0;
-    while (i < raw.size()) {
-        char c = raw[i];
-        if (c == '\\' && i + 1 < raw.size()) {
-            char next = raw[i + 1];
-            switch (next) {
-                case '{':  fmtStr += '{';  i += 2; break;
-                case '}':  fmtStr += '}';  i += 2; break;
-                case 'n':  fmtStr += '\n'; i += 2; break;
-                case 't':  fmtStr += '\t'; i += 2; break;
-                case 'r':  fmtStr += '\r'; i += 2; break;
-                case '\\': fmtStr += '\\'; i += 2; break;
-                case '"':  fmtStr += '"';  i += 2; break;
-                case '\'': fmtStr += '\''; i += 2; break;
-                case '0':  fmtStr += '\0'; i += 2; break;
-                default:   fmtStr += '\\'; fmtStr += next; i += 2; break;
+    for (auto& seg : node.Parts) {
+        if (!seg.expr) { // Literal text
+            std::string text = processEscapes(seg.text);
+            for (char c : text) {
+                if (c == '%') fmtStr += '%';
+                fmtStr += c;
             }
-        } else if (c == '{') {
-            size_t end = raw.find('}', i + 1);
+        } else { // Interpolated expression
+            seg.expr->accept(*this);
+            llvm::Value* val = LastValue;
+            if (!val) continue;
 
-            // malformed or empty {}, semantic analyzer should handle. skip the placeholder entirely.
-            if (end == std::string::npos) { ++i; continue; }
+            std::string kriolType = seg.expr->ResolvedType;
+            if (kriolType.empty()) kriolType = llvmTypeToKriol(val->getType());
 
-            std::string name = raw.substr(i + 1, end - i - 1);
-
-            // trim leading/trailing whitespace
-            auto ns = name.find_first_not_of(' ');
-            auto ne = name.find_last_not_of(' ');
-            name = (ns == std::string::npos) ? "" : name.substr(ns, ne - ns + 1);
-
-            // empty name, semantic analyzer should handle. skip the placeholder entirely.
-            if (name.empty()) { i = end + 1; continue; }
-
-            auto* alloca = lookupVar(name);
-            llvm::Value* val = nullptr;
-            std::string kriolType;
-
-            if (alloca) {
-                llvm::Type* ty = alloca->getAllocatedType();
-                kriolType = llvmTypeToKriol(ty);
-                val = Builder->CreateLoad(ty, alloca, name);
-            } else if (auto* gv = lookupGlobal(name)) {
-                llvm::Type* ty = gv->getValueType();
-                kriolType = llvmTypeToKriol(ty);
-                val = Builder->CreateLoad(ty, gv, name);
-            }
-
-            if (val) {
-                if (kriolType == "bool") {
-                    llvm::Value* ext = val->getType()->isIntegerTy(1)
-                        ? Builder->CreateZExt(val, llvm::Type::getInt32Ty(Context))
-                        : val;
-                    val = Builder->CreateCall(
-                        getOrDeclareKriolBoolToStr(*Mod, Context), {ext}, "bool_str");
-                    fmtStr += "%s";
-                } else {
-                    fmtStr += fmtSpec(kriolType);
-                }
-                callArgs.push_back(val);
+            if (kriolType == "bool") {
+                auto* i32Ty = llvm::Type::getInt32Ty(Context);
+                llvm::Value* ext = val->getType()->isIntegerTy(1)
+                    ? Builder->CreateZExt(val, i32Ty) : val;
+                val = Builder->CreateCall(
+                    getOrDeclareKriolBoolToStr(*Mod, Context), {ext}, "bool_str");
+                fmtStr += "%s";
             } else {
                 fmtStr += fmtSpec(kriolType);
             }
-            i = end + 1;
-        } else {
-            // Escape literal % signs so they pass through printf unchanged
-            if (c == '%') fmtStr += '%';
-            fmtStr += c;
-            ++i;
+            callArgs.push_back(val);
         }
     }
 
