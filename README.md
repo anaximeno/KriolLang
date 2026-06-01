@@ -1,6 +1,6 @@
 # 🦈 KriolLang
 
-**KriolLang** or **Kriol** is a programming language based on the **Cape Verdian Creole**. It was made to be easy for anyone who understands Cape Verdean Creole while keeping the same versatility as some other languages, such as C, Go, and Rust.
+**KriolLang** or **Kriol** is a programming language based on the **Cape Verdean Creole**. It was made to be easy for anyone who understands Cape Verdean Creole while keeping the same versatility as some other languages, such as C, Go, and Rust.
 
 ### Project status
 
@@ -12,7 +12,7 @@ The syntax of this programming language was initially based on C, Go, and Rust, 
 
 For more concrete specifications about the language, you are recommended to read the [KriolLang Language Specification](./docs/kriol-lang-spec.md).
 
-The file extension of the KriolLang programming language is **.kl** (representing the word **Kriol** or **Kriolu** which is how Kriol or Creole is pronounced in Cape Verdian's Creole) and the compiler's name is **kriol**.
+The file extension of the KriolLang programming language is **.kl** (representing the word **Kriol** or **Kriolu** which is how Kriol or Creole is pronounced in Cape Verdean's Creole) and the compiler's name is **kriol**.
 
 ## Installation
 
