@@ -1,0 +1,20 @@
+fn fibo(nter n) nter {
+    konfirma(n >= 0);
+
+    si n <= 1 {
+        divolvi 1;
+    } sinon {
+        divolvi fibo(n - 1) + fibo(n - 2);
+    }
+}
+
+fn inisiu() {
+    nter[10] seq = [0] * 10;
+
+    dipoz nter i;
+    pa i = 0; i < 10; i = i + 1 {
+        seq[i] = fibo(i);
+    }
+
+    mostran(f"A sequência de Fibonacci até o 10º elemento é {seq}");
+}

@@ -1,5 +1,5 @@
 fn dizenhaLinha(num tamanhu, bool dizenhaLinhaNaFin) {
-    num i;
+    dipoz num i;
 
     pa i = 0 ; i < tamanhu ; i = i + 1 {
         mostra("-");

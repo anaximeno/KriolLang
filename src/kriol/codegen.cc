@@ -280,22 +280,31 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
 
     if (node.IsArray) {
         if (node.Value) {
-            auto* init = dynamic_cast<ArrayLiteralExpr*>(node.Value.get());
-            if (!init) throw std::runtime_error("array variable '" + node.Name + "' requires array literal initializer");
-
             auto* arrTy = llvm::dyn_cast<llvm::ArrayType>(ty);
             if (!arrTy) throw std::runtime_error("internal error: array variable '" + node.Name + "' has non-array LLVM type");
             auto* elemTy = arrTy->getArrayElementType();
 
-            for (size_t i = 0; i < init->Elements.size(); ++i) {
-                init->Elements[i]->accept(*this);
-                if (!LastValue) continue;
-                llvm::Value* value = LastValue;
-                if (value->getType() != elemTy) value = coerce(value, elemTy);
-
-                auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
-                llvm::Value* elemPtr = createArrayElementPtr(alloca, ty, index);
-                Builder->CreateStore(value, elemPtr);
+            if (auto* initLit = dynamic_cast<ArrayLiteralExpr*>(node.Value.get())) {
+                for (size_t i = 0; i < initLit->Elements.size(); ++i) {
+                    initLit->Elements[i]->accept(*this);
+                    if (!LastValue) continue;
+                    llvm::Value* value = LastValue;
+                    if (value->getType() != elemTy) value = coerce(value, elemTy);
+                    auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
+                    llvm::Value* elemPtr = createArrayElementPtr(alloca, ty, index);
+                    Builder->CreateStore(value, elemPtr);
+                }
+            } else if (auto* initRep = dynamic_cast<ArrayRepeatExpr*>(node.Value.get())) {
+                initRep->Fill->accept(*this);
+                llvm::Value* fillVal = LastValue ? coerce(LastValue, elemTy)
+                                                 : llvm::Constant::getNullValue(elemTy);
+                for (size_t i = 0; i < initRep->Count; ++i) {
+                    auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
+                    llvm::Value* elemPtr = createArrayElementPtr(alloca, ty, index);
+                    Builder->CreateStore(fillVal, elemPtr);
+                }
+            } else {
+                throw std::runtime_error("array variable '" + node.Name + "' requires array literal or repeat initializer");
             }
         }
     } else if (node.Value) {
@@ -356,6 +365,11 @@ void CodeGenVisitor::visit(ArrayAccessExpr& node) {
 void CodeGenVisitor::visit(ArrayLiteralExpr& node) {
     // Array literals are consumed in VarDeclSttmt initializers; they do not
     // directly lower to a first-class runtime value in this M4 slice.
+    LastValue = nullptr;
+}
+
+void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
+    // Repeat expresssions are consumed in VarDeclSttmt initializers.
     LastValue = nullptr;
 }
 
@@ -827,11 +841,41 @@ static llvm::Type* getStorageValueType(llvm::Value* storage) {
     return nullptr;
 }
 
-static IdentExpr* unwrapIdentExpr(Expr* expr) {
-    while (auto* par = dynamic_cast<ParExpr*>(expr)) {
-        expr = par->Content.get();
+void CodeGenVisitor::appendArrayFormatParts(llvm::Value* storage,
+                                            llvm::ArrayType* arrayTy,
+                                            std::string& outFmt,
+                                            std::vector<llvm::Value*>& outArgs) {
+    outFmt += "[";
+    llvm::Type* elemTy    = arrayTy->getArrayElementType();
+    uint64_t    elemCount = arrayTy->getNumElements();
+
+    for (uint64_t i = 0; i < elemCount; ++i) {
+        if (i > 0) outFmt += ", ";
+
+        auto* idx      = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
+        llvm::Value* elemPtr = createArrayElementPtr(storage, arrayTy, idx);
+
+        if (auto* nestedArrayTy = llvm::dyn_cast<llvm::ArrayType>(elemTy)) {
+            appendArrayFormatParts(elemPtr, nestedArrayTy, outFmt, outArgs);
+            continue;
+        }
+
+        llvm::Value* elem      = Builder->CreateLoad(elemTy, elemPtr, "fstr_array_elem");
+        std::string  elemType  = llvmTypeToKriol(elemTy);
+        if (elemType == "bool") {
+            auto* i32Ty = llvm::Type::getInt32Ty(Context);
+            llvm::Value* ext = elem->getType()->isIntegerTy(1)
+                ? Builder->CreateZExt(elem, i32Ty)
+                : elem;
+            elem = Builder->CreateCall(getOrDeclareKriolBoolToStr(*Mod, Context), {ext}, "bool_str");
+            outFmt += "%s";
+        } else {
+            outFmt += fmtSpec(elemType);
+        }
+        outArgs.push_back(elem);
     }
-    return dynamic_cast<IdentExpr*>(expr);
+
+    outFmt += "]";
 }
 
 void CodeGenVisitor::visit(FStringExpr& node) {
@@ -846,6 +890,22 @@ void CodeGenVisitor::visit(FStringExpr& node) {
                 fmtStr += c;
             }
         } else { // Interpolated expression
+            auto parsedType = parseType(seg.expr->ResolvedType);
+            if (parsedType && parsedType->isArray()) {
+                auto* ident = unwrapIdentExpr(seg.expr.get());
+                if (!ident)
+                    throw std::runtime_error("array interpolation currently supports array variables only");
+
+                llvm::Value* storage = getArrayStorage(ident->Name);
+                llvm::Type* storageTy = getStorageValueType(storage);
+                auto* arrayTy = storageTy ? llvm::dyn_cast<llvm::ArrayType>(storageTy) : nullptr;
+                if (!storage || !arrayTy)
+                    throw std::runtime_error("cannot interpolate array variable '" + ident->Name + "'");
+
+                appendArrayFormatParts(storage, arrayTy, fmtStr, callArgs);
+                continue;
+            }
+
             seg.expr->accept(*this);
             llvm::Value* val = LastValue;
             if (!val) continue;

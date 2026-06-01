@@ -1,0 +1,19 @@
+fn inisiu() {
+    // nter repeat fill
+    nter[3] nums = [0] * 3;
+    nums[1] = 7;
+    mostra(nums[0]);
+    mostra(nums[1]);
+    mostra(nums[2]);
+
+    // bool repeat fill
+    bool[2] flags = [nau] * 2;
+    flags[0] = sin;
+    mostra(flags[0]);
+    mostra(flags[1]);
+
+    // num repeat fill
+    num[2] vals = [1.5] * 2;
+    mostra(vals[0]);
+    mostra(vals[1]);
+}

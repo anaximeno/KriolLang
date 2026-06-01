@@ -16,13 +16,27 @@ using kriol::typeutils::arrayElementType;
 using kriol::typeutils::firstArrayDim;
 using kriol::typeutils::isArrayType;
 
-IdentExpr* unwrapIdentExpr(Expr* expr) {
-    while (auto* par = dynamic_cast<ParExpr*>(expr)) {
-        expr = par->Content.get();
-    }
-    return dynamic_cast<IdentExpr*>(expr);
 }
 
+bool SemanticAnalyzer::handleArrayIdentArg(ast::Expr& expr) {
+    auto* ident = unwrapIdentExpr(&expr);
+    if (!ident) return false;
+
+    auto t = lookupVar(ident->Name);
+    if (!t) {
+        addError(errLoc(ident->LineNum) + "undefined variable name '" + ident->Name + "'");
+        return true;
+    }
+
+    if (!isArrayType(*t)) return false;
+
+    auto* init = lookupInitState(ident->Name);
+    if (init && init->isArray && !init->fullyInitialized)
+        addError(errLoc(ident->LineNum) + "array '" + ident->Name + "' may contain uninitialized elements");
+
+    ident->ResolvedType = *t;
+    expr.ResolvedType = *t;
+    return true;
 }
 
 static const std::unordered_set<std::string> reservedKeywords = {
@@ -31,7 +45,7 @@ static const std::unordered_set<std::string> reservedKeywords = {
 
     // Language keywords.
     "si", "sinon", "nkuantu", "pa", "fn", "divolvi", "inpristan",
-    "para", "kontinua",
+    "para", "kontinua", "dipoz",
 
     // Type names and literals.
     "num", "nter", "bool", "vaziu", "textu", "sin", "nau"
@@ -132,14 +146,31 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     }
 
     if (node.IsArray && node.Value) {
-        auto* init = dynamic_cast<ArrayLiteralExpr*>(node.Value.get());
-        if (!init) {
-            addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must use an array initializer like [a, b, c]");
+        auto* initLit = dynamic_cast<ArrayLiteralExpr*>(node.Value.get());
+        auto* initRep = dynamic_cast<ArrayRepeatExpr*>(node.Value.get());
+        if (!initLit && !initRep) {
+            addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must use an array initializer like [a, b, c] or [value] * N");
             canDeclare = false;
-        } else {
-            init->accept(*this);
+        } else if (initRep) {
+            initRep->accept(*this);
             const std::size_t expected = node.ArraySize;
-            const std::size_t got = init->Elements.size();
+            if (initRep->Count != expected) {
+                addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' has size "
+                         + std::to_string(expected) + " but repeat initializer [value] * "
+                         + std::to_string(initRep->Count) + " has a different count");
+                canDeclare = false;
+            }
+            const std::string elemType = arrayElementType(node.Type);
+            const auto& fillType = initRep->Fill ? initRep->Fill->ResolvedType : "";
+            if (!fillType.empty() && fillType != elemType && !isWideningCoercion(fillType, elemType))
+                addError(errLoc(node.LineNum) + "repeat initializer fill type '" + fillType
+                         + "' does not match array element type '" + elemType + "'");
+            initState.elementInitialized.assign(expected, true);
+            initState.fullyInitialized = true;
+        } else {
+            initLit->accept(*this);
+            const std::size_t expected = node.ArraySize;
+            const std::size_t got = initLit->Elements.size();
             initState.elementInitialized.assign(expected, false);
             if (got != expected) {
                 addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' expects "
@@ -148,8 +179,8 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
             }
 
             const std::string elemType = arrayElementType(node.Type);
-            for (size_t i = 0; i < init->Elements.size(); ++i) {
-                const auto& t = init->Elements[i]->ResolvedType;
+            for (size_t i = 0; i < initLit->Elements.size(); ++i) {
+                const auto& t = initLit->Elements[i]->ResolvedType;
                 if (!t.empty() && t != elemType && !isWideningCoercion(t, elemType)) {
                     addError(errLoc(node.LineNum) + "array initializer element " + std::to_string(i + 1)
                              + ": expected '" + elemType + "', got '" + t + "'");
@@ -452,6 +483,11 @@ void SemanticAnalyzer::visit(ArrayLiteralExpr& node) {
     node.ResolvedType = "array_literal";
 }
 
+void SemanticAnalyzer::visit(ArrayRepeatExpr& node) {
+    if (node.Fill) node.Fill->accept(*this);
+    node.ResolvedType = "array_repeat";
+}
+
 void SemanticAnalyzer::visit(AssignExpr& node) {
     std::string assigneeType;
     bool canMarkInitialized = true;
@@ -545,35 +581,10 @@ void SemanticAnalyzer::visit(ForSttmt& node) {
 }
 
 void SemanticAnalyzer::visit(MostraFunCallExpr& node) {
-    if (node.Args) {
-        for (auto& arg : node.Args->Args) {
-            if (!arg) continue;
-
-            auto* ident = unwrapIdentExpr(arg.get());
-            if (!ident) {
+    if (node.Args)
+        for (auto& arg : node.Args->Args)
+            if (arg && !handleArrayIdentArg(*arg))
                 arg->accept(*this);
-                continue;
-            }
-
-            auto t = lookupVar(ident->Name);
-            if (!t) {
-                addError(errLoc(ident->LineNum) + "undefined variable name '" + ident->Name + "'");
-                continue;
-            }
-
-            if (!isArrayType(*t)) {
-                arg->accept(*this);
-                continue;
-            }
-
-            auto* init = lookupInitState(ident->Name);
-            if (init && init->isArray && !init->fullyInitialized)
-                addError(errLoc(ident->LineNum) + "array '" + ident->Name + "' may contain uninitialized elements");
-
-            ident->ResolvedType = *t;
-            arg->ResolvedType = *t;
-        }
-    }
     node.ResolvedType = "vaziu";
 }
 
@@ -586,7 +597,8 @@ void SemanticAnalyzer::visit(FStringExpr& node) {
         "nter", "num", "bool", "textu"
     };
     for (auto& seg : node.Parts) {
-        if (seg.expr) {
+        if (!seg.expr) continue;
+        if (!handleArrayIdentArg(*seg.expr)) {
             seg.expr->accept(*this);
             const std::string& t = seg.expr->ResolvedType;
             if (!t.empty() && !printableTypes.count(t))

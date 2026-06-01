@@ -1,0 +1,7 @@
+fn inisiu() {
+    nter[3] nums = [1, 2, 3];
+    bool[2] flags = [sin, nau];
+    textu[2] words = ["A", "B"];
+
+    mostran(f"nums={nums} flags={flags} words={words}");
+}

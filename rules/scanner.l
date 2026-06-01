@@ -41,6 +41,7 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 "mostran"       return TOKENIZE(MOSTRAN);
 "mostra"        return TOKENIZE(MOSTRA);
 "inpristan"     return TOKENIZE(IMPRISTAN);
+"dipoz"         return TOKENIZE(DIPOZ);
 "si"            return TOKENIZE(SI);
 "sinon"         return TOKENIZE(SINON);
 "divolvi"       return TOKENIZE(DIVOLVI);
