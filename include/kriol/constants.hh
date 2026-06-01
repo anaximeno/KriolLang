@@ -3,6 +3,7 @@
 
 #define KL_STANDARD_NAME "Kriol"
 #define KL_STANDARD_FILE_EXTENSION "kl"
+#define KL_ALTERNATIVE_FILE_EXTENSION "kriol"
 #define KL_STANDARD_COMPILER_NAME "kriol"
 
 #define KL_VERSION_MAJOR 1

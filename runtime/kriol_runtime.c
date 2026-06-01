@@ -90,3 +90,11 @@ void __kriol_konfirma(int cond, int line) {
         exit(1);
     }
 }
+
+void __kriol_check_bounds(int64_t index, int64_t size, int line) {
+    if (index < 0 || index >= size) {
+        fprintf(stderr, "kriol: array index out of bounds at line %d: %lld not in [0..%lld]\n",
+                line, (long long)index, (long long)size - 1);
+        exit(1);
+    }
+}

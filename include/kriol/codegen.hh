@@ -58,6 +58,11 @@ namespace ast {
                                                llvm::Type* ty);
         llvm::AllocaInst*    lookupVar(const std::string& name);
         llvm::GlobalVariable* lookupGlobal(const std::string& name);
+        llvm::Value*         getArrayStorage(const std::string& name);
+        llvm::Value*         createArrayElementPtr(llvm::Value* storage,
+                               llvm::Type* arrayTy,
+                               llvm::Value* index);
+        llvm::Function*      getOrDeclareKriolCheckBounds();
 
         void pushScope() { Scopes.push_back({}); }
         void popScope()  { if (!Scopes.empty()) Scopes.pop_back(); }
@@ -79,6 +84,13 @@ namespace ast {
 
         // Coerce value to i1 for use as a branch condition
         llvm::Value* toBool(llvm::Value* v);
+
+        // Recursively appends format specifiers and argument values for an array
+        // to outFmt and outArgs, for use with __kriol_format.
+        void appendArrayFormatParts(llvm::Value* storage,
+                                    llvm::ArrayType* arrayTy,
+                                    std::string& outFmt,
+                                    std::vector<llvm::Value*>& outArgs);
 
     public:
         explicit CodeGenVisitor(const std::string& moduleName);
@@ -105,6 +117,9 @@ namespace ast {
         void visit(ExprSttmt&         node) override;
         void visit(IdentExpr&         node) override;
         void visit(ParExpr&           node) override;
+        void visit(ArrayAccessExpr&   node) override;
+        void visit(ArrayLiteralExpr&  node) override;
+        void visit(ArrayRepeatExpr&   node) override;
         void visit(AssignExpr&        node) override;
         void visit(ForSttmt&          node) override;
         void visit(MostraFunCallExpr& node) override;

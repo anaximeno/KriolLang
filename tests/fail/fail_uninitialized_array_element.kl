@@ -1,0 +1,5 @@
+fn inisiu() {
+    dipoz nter[2] a;
+    a[1] = 5;
+    mostra(a[0]);
+}

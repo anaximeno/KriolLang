@@ -93,7 +93,10 @@ void cli::Compiler::DefineArgs(void)
         .implicit_value(true);
 
     Parser->add_argument("-T", "--ignore-extension")
-        .help("Without this flag, only files with extension '" + std::string(KL_STANDARD_FILE_EXTENSION) + "' will be allowed by the compiler.")
+        .help("Without this flag, only files with extensions '" +
+             std::string(KL_STANDARD_FILE_EXTENSION) + "' or '" +
+             std::string(KL_ALTERNATIVE_FILE_EXTENSION) +
+             "' will be allowed by the compiler.")
         .default_value(false)
         .implicit_value(true);
 }
@@ -207,9 +210,12 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
         return name.find(endstr, name.size() - endstr.size());
     };
 
-    if (Args.shouldCheckExtension && (matchAtEndOfFilename(KL_STANDARD_FILE_EXTENSION) == std::string::npos))
+    if (Args.shouldCheckExtension &&
+        (matchAtEndOfFilename(KL_STANDARD_FILE_EXTENSION) == std::string::npos) &&
+        (matchAtEndOfFilename(KL_ALTERNATIVE_FILE_EXTENSION) == std::string::npos))
     {
-        cli::PrintErr("File format not recognized. Filename should end with a '" + std::string(KL_STANDARD_FILE_EXTENSION) + "' file extension.", 1);
+        cli::PrintErr("File format not recognized. Filename should end with a '" +
+            std::string(KL_STANDARD_FILE_EXTENSION) + "' or '" + std::string(KL_ALTERNATIVE_FILE_EXTENSION) + "' file extension.", 1);
     }
 
     ast::BlockSttmt *ProgramAST = KriolLangParserWrapper::ParseCode(Args.filename, true);

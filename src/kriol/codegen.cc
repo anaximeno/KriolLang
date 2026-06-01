@@ -1,4 +1,5 @@
 #include "../../include/kriol/codegen.hh"
+#include "../../include/kriol/type_utils.hh"
 
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/LegacyPassManager.h>
@@ -58,6 +59,13 @@ static std::string llvmTypeToKriol(llvm::Type* ty) {
     return "textu"; // pointer / fallback
 }
 
+namespace {
+
+using kriol::typeutils::arrayElementType;
+using kriol::typeutils::parseType;
+
+} // namespace
+
 using namespace kriol::ast;
 
 CodeGenVisitor::CodeGenVisitor(const std::string& moduleName)
@@ -72,12 +80,23 @@ CodeGenVisitor::CodeGenVisitor(const std::string& moduleName)
 }
 
 llvm::Type* CodeGenVisitor::mapType(const std::string& t) {
+    auto parsed = parseType(t);
+    if (parsed && parsed->isArray()) {
+        llvm::Type* current = mapType(parsed->Base);
+        for (auto it = parsed->ArrayDims.rbegin(); it != parsed->ArrayDims.rend(); ++it)
+            current = llvm::ArrayType::get(current, *it);
+        return current;
+    }
+
     if (t == "num")   return llvm::Type::getDoubleTy(Context);
     if (t == "nter")  return llvm::Type::getInt64Ty(Context);
     if (t == "bool")  return llvm::Type::getInt1Ty(Context);
     if (t == "textu") return llvm::PointerType::getUnqual(Context);
     if (t == "vaziu") return llvm::Type::getVoidTy(Context);
-    return llvm::Type::getDoubleTy(Context); // default
+
+    // Future-friendly default for non-native/user-defined types (e.g. molda):
+    // lower as references until first-class layout is introduced.
+    return llvm::PointerType::getUnqual(Context);
 }
 
 llvm::AllocaInst* CodeGenVisitor::createEntryAlloca(
@@ -259,13 +278,98 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     llvm::AllocaInst* alloca = createEntryAlloca(CurrentFunction, node.Name, ty);
     declareVar(node.Name, alloca);
 
-    if (node.Value) {
+    if (node.IsArray) {
+        if (node.Value) {
+            auto* arrTy = llvm::dyn_cast<llvm::ArrayType>(ty);
+            if (!arrTy) throw std::runtime_error("internal error: array variable '" + node.Name + "' has non-array LLVM type");
+            auto* elemTy = arrTy->getArrayElementType();
+
+            if (auto* initLit = dynamic_cast<ArrayLiteralExpr*>(node.Value.get())) {
+                for (size_t i = 0; i < initLit->Elements.size(); ++i) {
+                    initLit->Elements[i]->accept(*this);
+                    if (!LastValue) continue;
+                    llvm::Value* value = LastValue;
+                    if (value->getType() != elemTy) value = coerce(value, elemTy);
+                    auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
+                    llvm::Value* elemPtr = createArrayElementPtr(alloca, ty, index);
+                    Builder->CreateStore(value, elemPtr);
+                }
+            } else if (auto* initRep = dynamic_cast<ArrayRepeatExpr*>(node.Value.get())) {
+                initRep->Fill->accept(*this);
+                llvm::Value* fillVal = LastValue ? coerce(LastValue, elemTy)
+                                                 : llvm::Constant::getNullValue(elemTy);
+                for (size_t i = 0; i < initRep->Count; ++i) {
+                    auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
+                    llvm::Value* elemPtr = createArrayElementPtr(alloca, ty, index);
+                    Builder->CreateStore(fillVal, elemPtr);
+                }
+            } else {
+                throw std::runtime_error("array variable '" + node.Name + "' requires array literal or repeat initializer");
+            }
+        }
+    } else if (node.Value) {
         node.Value->accept(*this);
         if (LastValue) {
             LastValue = coerce(LastValue, ty);
             Builder->CreateStore(LastValue, alloca);
         }
     }
+    LastValue = nullptr;
+}
+
+llvm::Function* CodeGenVisitor::getOrDeclareKriolCheckBounds() {
+    if (auto* fn = Mod->getFunction("__kriol_check_bounds")) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* i64Ty  = llvm::Type::getInt64Ty(Context);
+    auto* i32Ty  = llvm::Type::getInt32Ty(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {i64Ty, i64Ty, i32Ty}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_check_bounds", *Mod);
+}
+
+llvm::Value* CodeGenVisitor::getArrayStorage(const std::string& name) {
+    if (auto* alloca = lookupVar(name)) return alloca;
+    if (auto* gv = lookupGlobal(name)) return gv;
+    return nullptr;
+}
+
+llvm::Value* CodeGenVisitor::createArrayElementPtr(llvm::Value* storage,
+                                                   llvm::Type* arrayTy,
+                                                   llvm::Value* index) {
+    auto* zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), 0);
+    return Builder->CreateGEP(arrayTy, storage, {zero, index}, "array.elem.ptr");
+}
+
+void CodeGenVisitor::visit(ArrayAccessExpr& node) {
+    auto* storage = getArrayStorage(node.Name);
+    if (!storage) { LastValue = nullptr; return; }
+
+    llvm::Type* storageTy = nullptr;
+    if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(storage)) storageTy = alloca->getAllocatedType();
+    else if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(storage)) storageTy = gv->getValueType();
+    if (!storageTy || !storageTy->isArrayTy()) { LastValue = nullptr; return; }
+
+    if (node.Index) node.Index->accept(*this);
+    if (!LastValue) { LastValue = nullptr; return; }
+
+    auto* i64Ty = llvm::Type::getInt64Ty(Context);
+    llvm::Value* idx = LastValue->getType() == i64Ty ? LastValue : coerce(LastValue, i64Ty);
+
+    auto* sizeConst = llvm::ConstantInt::get(i64Ty, storageTy->getArrayNumElements());
+    auto* lineConst = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), node.LineNum);
+    Builder->CreateCall(getOrDeclareKriolCheckBounds(), {idx, sizeConst, lineConst});
+
+    llvm::Value* elemPtr = createArrayElementPtr(storage, storageTy, idx);
+    LastValue = Builder->CreateLoad(storageTy->getArrayElementType(), elemPtr, node.Name + "[idx]");
+}
+
+void CodeGenVisitor::visit(ArrayLiteralExpr& node) {
+    // Array literals are consumed in VarDeclSttmt initializers; they do not
+    // directly lower to a first-class runtime value in this M4 slice.
+    LastValue = nullptr;
+}
+
+void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
+    // Repeat expresssions are consumed in VarDeclSttmt initializers.
     LastValue = nullptr;
 }
 
@@ -296,11 +400,20 @@ void CodeGenVisitor::visit(BlockSttmt& node) {
         for (auto& s : node.SttmtList)
             if (auto* fn = dynamic_cast<FuncDeclSttmt*>(s.get()))
                 forwardDeclareFunc(*fn);
+
+        // Also visit all top-level variable declarations first so deferred
+        // global initializers are complete before main is emitted.
+        for (auto& s : node.SttmtList)
+            if (auto* v = dynamic_cast<VarDeclSttmt*>(s.get()))
+                v->accept(*this);
     }
 
     pushScope();
-    for (auto& s : node.SttmtList)
-        if (s) s->accept(*this);
+    for (auto& s : node.SttmtList) {
+        if (!s) continue;
+        if (!CurrentFunction && dynamic_cast<VarDeclSttmt*>(s.get())) continue;
+        s->accept(*this);
+    }
     popScope();
 }
 
@@ -595,44 +708,56 @@ void CodeGenVisitor::visit(AssignExpr& node) {
     llvm::Value* val = LastValue;
 
     auto* ident = dynamic_cast<IdentExpr*>(node.Assignee.get());
-    if (!ident || !val) { LastValue = nullptr; return; }
+    auto* arrayAccess = dynamic_cast<ArrayAccessExpr*>(node.Assignee.get());
+    if (!val || (!ident && !arrayAccess)) { LastValue = nullptr; return; }
 
-    auto* alloca = lookupVar(ident->Name);
-    if (alloca) {
-        if (node.AssignOp != "=") {
-            llvm::Value* cur = Builder->CreateLoad(alloca->getAllocatedType(), alloca);
-            llvm::Type* ty = cur->getType();
-            llvm::Value* rhs = coerce(val, ty);
-            bool isFloat = ty->isDoubleTy();
-            if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, rhs) : Builder->CreateAdd(cur, rhs);
-            else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, rhs) : Builder->CreateSub(cur, rhs);
-            else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, rhs) : Builder->CreateMul(cur, rhs);
-            else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, rhs) : Builder->CreateSDiv(cur, rhs);
-        } else {
-            val = coerce(val, alloca->getAllocatedType());
+    llvm::Value* destPtr = nullptr;
+    llvm::Type* destTy = nullptr;
+
+    if (ident) {
+        if (auto* alloca = lookupVar(ident->Name)) {
+            destPtr = alloca;
+            destTy = alloca->getAllocatedType();
+        } else if (auto* gv = lookupGlobal(ident->Name)) {
+            destPtr = gv;
+            destTy = gv->getValueType();
         }
-        Builder->CreateStore(val, alloca);
-        LastValue = val;
-        return;
+    } else if (arrayAccess) {
+        auto* storage = getArrayStorage(arrayAccess->Name);
+        if (storage) {
+            if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(storage)) destTy = alloca->getAllocatedType();
+            else if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(storage)) destTy = gv->getValueType();
+            if (destTy && destTy->isArrayTy()) {
+                if (arrayAccess->Index) arrayAccess->Index->accept(*this);
+                if (!LastValue) { LastValue = nullptr; return; }
+
+                auto* i64Ty = llvm::Type::getInt64Ty(Context);
+                llvm::Value* idx = LastValue->getType() == i64Ty ? LastValue : coerce(LastValue, i64Ty);
+                auto* sizeConst = llvm::ConstantInt::get(i64Ty, destTy->getArrayNumElements());
+                auto* lineConst = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), arrayAccess->LineNum);
+                Builder->CreateCall(getOrDeclareKriolCheckBounds(), {idx, sizeConst, lineConst});
+                destPtr = createArrayElementPtr(storage, destTy, idx);
+                destTy = destTy->getArrayElementType();
+            }
+        }
     }
 
-    auto* gv = lookupGlobal(ident->Name);
-    if (gv) {
-        if (node.AssignOp != "=") {
-            llvm::Value* cur = Builder->CreateLoad(gv->getValueType(), gv);
-            llvm::Type* ty = cur->getType();
-            llvm::Value* rhs = coerce(val, ty);
-            bool isFloat = ty->isDoubleTy();
-            if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, rhs) : Builder->CreateAdd(cur, rhs);
-            else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, rhs) : Builder->CreateSub(cur, rhs);
-            else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, rhs) : Builder->CreateMul(cur, rhs);
-            else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, rhs) : Builder->CreateSDiv(cur, rhs);
-        } else {
-            val = coerce(val, gv->getValueType());
-        }
-        Builder->CreateStore(val, gv);
+    if (!destPtr || !destTy) { LastValue = nullptr; return; }
+
+    if (node.AssignOp != "=") {
+        llvm::Value* cur = Builder->CreateLoad(destTy, destPtr);
+        llvm::Value* rhs = coerce(val, destTy);
+        bool isFloat = destTy->isDoubleTy();
+        if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, rhs) : Builder->CreateAdd(cur, rhs);
+        else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, rhs) : Builder->CreateSub(cur, rhs);
+        else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, rhs) : Builder->CreateMul(cur, rhs);
+        else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, rhs) : Builder->CreateSDiv(cur, rhs);
+    } else {
+        val = coerce(val, destTy);
     }
+    Builder->CreateStore(val, destPtr);
     LastValue = val;
+    return;
 }
 
 void CodeGenVisitor::visit(ForSttmt& node) {
@@ -710,6 +835,49 @@ static llvm::Function* getOrDeclareKriolFormat(llvm::Module& Mod, llvm::LLVMCont
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_format", Mod);
 }
 
+static llvm::Type* getStorageValueType(llvm::Value* storage) {
+    if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(storage)) return alloca->getAllocatedType();
+    if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(storage)) return gv->getValueType();
+    return nullptr;
+}
+
+void CodeGenVisitor::appendArrayFormatParts(llvm::Value* storage,
+                                            llvm::ArrayType* arrayTy,
+                                            std::string& outFmt,
+                                            std::vector<llvm::Value*>& outArgs) {
+    outFmt += "[";
+    llvm::Type* elemTy    = arrayTy->getArrayElementType();
+    uint64_t    elemCount = arrayTy->getNumElements();
+
+    for (uint64_t i = 0; i < elemCount; ++i) {
+        if (i > 0) outFmt += ", ";
+
+        auto* idx      = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
+        llvm::Value* elemPtr = createArrayElementPtr(storage, arrayTy, idx);
+
+        if (auto* nestedArrayTy = llvm::dyn_cast<llvm::ArrayType>(elemTy)) {
+            appendArrayFormatParts(elemPtr, nestedArrayTy, outFmt, outArgs);
+            continue;
+        }
+
+        llvm::Value* elem      = Builder->CreateLoad(elemTy, elemPtr, "fstr_array_elem");
+        std::string  elemType  = llvmTypeToKriol(elemTy);
+        if (elemType == "bool") {
+            auto* i32Ty = llvm::Type::getInt32Ty(Context);
+            llvm::Value* ext = elem->getType()->isIntegerTy(1)
+                ? Builder->CreateZExt(elem, i32Ty)
+                : elem;
+            elem = Builder->CreateCall(getOrDeclareKriolBoolToStr(*Mod, Context), {ext}, "bool_str");
+            outFmt += "%s";
+        } else {
+            outFmt += fmtSpec(elemType);
+        }
+        outArgs.push_back(elem);
+    }
+
+    outFmt += "]";
+}
+
 void CodeGenVisitor::visit(FStringExpr& node) {
     std::string fmtStr;
     std::vector<llvm::Value*> callArgs;
@@ -722,6 +890,22 @@ void CodeGenVisitor::visit(FStringExpr& node) {
                 fmtStr += c;
             }
         } else { // Interpolated expression
+            auto parsedType = parseType(seg.expr->ResolvedType);
+            if (parsedType && parsedType->isArray()) {
+                auto* ident = unwrapIdentExpr(seg.expr.get());
+                if (!ident)
+                    throw std::runtime_error("array interpolation currently supports array variables only");
+
+                llvm::Value* storage = getArrayStorage(ident->Name);
+                llvm::Type* storageTy = getStorageValueType(storage);
+                auto* arrayTy = storageTy ? llvm::dyn_cast<llvm::ArrayType>(storageTy) : nullptr;
+                if (!storage || !arrayTy)
+                    throw std::runtime_error("cannot interpolate array variable '" + ident->Name + "'");
+
+                appendArrayFormatParts(storage, arrayTy, fmtStr, callArgs);
+                continue;
+            }
+
             seg.expr->accept(*this);
             llvm::Value* val = LastValue;
             if (!val) continue;
@@ -754,6 +938,7 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
     auto* i64Ty    = llvm::Type::getInt64Ty(Context);
     auto* doubleTy = llvm::Type::getDoubleTy(Context);
     auto* i32Ty    = llvm::Type::getInt32Ty(Context);
+    auto* putcharFn = getOrDeclarePutchar(*Mod, Context);
 
     auto emitPrintValue = [&](llvm::Value* val, const std::string& resolvedType, bool newline) {
         if (resolvedType == "nter") {
@@ -773,9 +958,39 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
         }
     };
 
+    auto printChar = [&](char c) {
+        Builder->CreateCall(putcharFn, {llvm::ConstantInt::get(i32Ty, c)});
+    };
+
+    auto emitPrintArray = [&](auto&& self, llvm::Value* storage, llvm::ArrayType* arrayTy) -> void {
+        printChar('[');
+        llvm::Type* elemTy = arrayTy->getArrayElementType();
+        uint64_t elemCount = arrayTy->getNumElements();
+
+        for (uint64_t i = 0; i < elemCount; ++i) {
+            if (i > 0) {
+                printChar(',');
+                printChar(' ');
+            }
+
+            auto* idx = llvm::ConstantInt::get(i64Ty, i);
+            llvm::Value* elemPtr = createArrayElementPtr(storage, arrayTy, idx);
+
+            if (auto* nestedArrayTy = llvm::dyn_cast<llvm::ArrayType>(elemTy)) {
+                self(self, elemPtr, nestedArrayTy);
+                continue;
+            }
+
+            llvm::Value* elem = Builder->CreateLoad(elemTy, elemPtr, "array.elem");
+            emitPrintValue(elem, llvmTypeToKriol(elemTy), /*newline=*/false);
+        }
+
+        printChar(']');
+    };
+
     if (!node.Args || node.Args->Args.empty()) {
         if (node.AddNewline)
-            Builder->CreateCall(getOrDeclarePutchar(*Mod, Context),
+            Builder->CreateCall(putcharFn,
                                 {llvm::ConstantInt::get(i32Ty, '\n')});
         LastValue = nullptr;
         return;
@@ -787,6 +1002,23 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
     for (size_t i = 0; i < args.size(); ++i) {
         bool addNlHere = (i == lastIdx) && node.AddNewline;
         auto& arg = args[i];
+
+        auto parsedType = parseType(arg->ResolvedType);
+        if (parsedType && parsedType->isArray()) {
+            auto* ident = unwrapIdentExpr(arg.get());
+            if (!ident)
+                throw std::runtime_error("array printing currently supports array variables only");
+
+            llvm::Value* storage = getArrayStorage(ident->Name);
+            llvm::Type* storageTy = getStorageValueType(storage);
+            auto* arrayTy = storageTy ? llvm::dyn_cast<llvm::ArrayType>(storageTy) : nullptr;
+            if (!storage || !arrayTy)
+                throw std::runtime_error("cannot print array variable '" + ident->Name + "'");
+
+            emitPrintArray(emitPrintArray, storage, arrayTy);
+            if (addNlHere) printChar('\n');
+            continue;
+        }
 
         arg->accept(*this);
         llvm::Value* v = LastValue;

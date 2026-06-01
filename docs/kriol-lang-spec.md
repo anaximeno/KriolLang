@@ -53,14 +53,31 @@ Language specifications for the KriolLang programming language.
 
 <declarator> ::= <identifier>
 
-<declaration> ::= <type_specifier> <init_declarator>
+<array_declarator> ::= '[' T_INT_LIT ']' <declarator>
 
-<init_declarator> ::= <declarator>
-                    | <declarator> <assignment_operator> <initializer>
+<declaration> ::= <type_specifier> <declarator> '=' <initializer> ';'
+                | <type_specifier> <array_declarator> '=' <initializer> ';'
+                | T_DIPOZ <type_specifier> <declarator> ';'
+                | T_DIPOZ <type_specifier> <array_declarator> ';'
 
 <initializer> ::= <expression>
+                | <array_initializer>
+                | <array_initializer> T_MUL T_INT_LIT
+
+<array_initializer> ::= '[' <array_initializer_elements> ']'
+
+<array_initializer_elements> ::= <value_expression>
+                               | <array_initializer_elements> ',' <value_expression>
+
+<value_expression> ::= <constant_expression>
 
 ```
+
+Notes:
+
+- Bare declarations without initializer are invalid unless prefixed with `dipoz`.
+- Repeat initialization uses `[value] * N`, for example `nter[5] seq = [0] * 5;`.
+- Current repeat count is an integer literal (`T_INT_LIT`).
 
 ### Binary Expressions
 
@@ -94,7 +111,6 @@ Language specifications for the KriolLang programming language.
 
 ```xml
 <expression> ::= <assignment_expression>
-               | <function_call>
 
 <constant_expression> ::= <logical_or_expressions>
 
@@ -104,6 +120,7 @@ Language specifications for the KriolLang programming language.
 
 <primary_expression> ::= <identifier>
                        | <constant>
+                       | <identifier> '[' <value_expression> ']'
                        | '(' <expression> ')'
 
 <assignment_expression> ::= <constant_expression>
@@ -212,6 +229,7 @@ Below are the keywords and types in the language mapped to standard C.
 | divolvi     | return       | Return       |
 | mostra      | printf       | Print        |
 | mostran     | printf + \n  | Print + newline |
+| dipoz       | -            | Deferred     |
 | sai         | exit()       | Exit program |
 | konfirma    | assert()     | Assert       |
 | inisiu      | main         | Entry point  |

@@ -101,11 +101,12 @@ extern int yydebug;
     NOT = 302,                     /* "!"  */
     SAI = 303,                     /* "sai"  */
     KONFIRMA = 304,                /* "konfirma"  */
-    FSTR_START = 305,              /* "f-string"  */
-    FSTR_END = 306,                /* "end of f-string"  */
-    FSTR_LBRACE = 307,             /* "start of interpolation"  */
-    FSTR_RBRACE = 308,             /* "end of interpolation"  */
-    UMINUS = 309                   /* UMINUS  */
+    DIPOZ = 305,                   /* "dipoz"  */
+    FSTR_START = 306,              /* "f-string"  */
+    FSTR_END = 307,                /* "end of f-string"  */
+    FSTR_LBRACE = 308,             /* "start of interpolation"  */
+    FSTR_RBRACE = 309,             /* "end of interpolation"  */
+    UMINUS = 310                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -128,7 +129,7 @@ union YYSTYPE
     kriol::ast::FuncCallArgs* args;
     kriol::ast::LiteralExpr* litexpr;
 
-#line 132 "parser.hh"
+#line 133 "parser.hh"
 
 };
 typedef union YYSTYPE YYSTYPE;

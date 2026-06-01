@@ -31,6 +31,9 @@ namespace ast {
     class ForSttmt;
     class MostraFunCallExpr;
     class ImportSttmt;
+    class ArrayAccessExpr;
+    class ArrayLiteralExpr;
+    class ArrayRepeatExpr;
     class FStringExpr;
     class UnaryExpr;
     class SaiSttmt;
@@ -58,6 +61,9 @@ namespace ast {
         virtual void visit(ForSttmt& node) = 0;
         virtual void visit(MostraFunCallExpr& node) = 0;
         virtual void visit(ImportSttmt& node) = 0;
+        virtual void visit(ArrayAccessExpr& node) = 0;
+        virtual void visit(ArrayLiteralExpr& node) = 0;
+        virtual void visit(ArrayRepeatExpr& node) = 0;
         virtual void visit(FStringExpr& node) = 0;
         virtual void visit(UnaryExpr& node) = 0;
         virtual void visit(SaiSttmt& node) = 0;
@@ -83,6 +89,8 @@ namespace ast {
         std::string Name;
         std::unique_ptr<Expr> Value;
         bool IsParam = false;
+        bool IsArray = false;
+        std::size_t ArraySize = 0;
 
         VarDeclSttmt(std::string Type, std::string Name, std::unique_ptr<Expr> Value)
             : Type(std::move(Type)), Name(std::move(Name)), Value(std::move(Value)) {}
@@ -230,6 +238,39 @@ namespace ast {
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
+    class ArrayAccessExpr : public Expr {
+    public:
+        std::string Name;
+        std::unique_ptr<Expr> Index;
+
+        ArrayAccessExpr(std::string Name, std::unique_ptr<Expr> Index)
+            : Name(std::move(Name)), Index(std::move(Index)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class ArrayLiteralExpr : public Expr {
+    public:
+        std::vector<std::unique_ptr<Expr>> Elements;
+
+        void addElement(std::unique_ptr<Expr> element) {
+            Elements.push_back(std::move(element));
+        }
+
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    /// Array repeat initializer: `[fill] * N`.
+    /// Declares a fully-initialized array where every element is a copy of fill.
+    class ArrayRepeatExpr : public Expr {
+    public:
+        std::unique_ptr<Expr> Fill;
+        std::size_t           Count;
+
+        ArrayRepeatExpr(std::unique_ptr<Expr> fill, std::size_t count)
+            : Fill(std::move(fill)), Count(count) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
     class AssignExpr : public Expr {
     public:
         std::string AssignOp;
@@ -299,6 +340,14 @@ namespace ast {
         KonfirmaSttmt(std::unique_ptr<Expr> cond) : Cond(std::move(cond)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
+
+    /// Strips any number of ParExpr wrappers and returns the underlying
+    /// IdentExpr, or nullptr if the expression is not a bare identifier.
+    inline IdentExpr* unwrapIdentExpr(Expr* expr) {
+        while (auto* par = dynamic_cast<ParExpr*>(expr))
+            expr = par->Content.get();
+        return dynamic_cast<IdentExpr*>(expr);
+    }
 
 }
 }

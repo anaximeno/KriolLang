@@ -1,0 +1,7 @@
+fn inisiu() {
+    nter[2] array = [1, 2];
+    mostra(array[0]);
+    mostra(" ");
+    mostra(array[1]);
+    mostran();
+}

@@ -1,7 +1,7 @@
 fn soma(num n) num {
     num acc = 0;
 
-    nter i;
+    dipoz nter i;
     pa i = 1 ; i < n ; i = i + 1 {
         acc = acc + i;
     }
