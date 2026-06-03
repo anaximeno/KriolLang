@@ -48,7 +48,7 @@ static const std::unordered_set<std::string> reservedKeywords = {
     "para", "kontinua", "dipoz",
 
     // Type names and literals.
-    "num", "nter", "bool", "vaziu", "textu", "sin", "nau"
+    "num", "nter", "bool", "textu", "sin", "nau"
 };
 
 bool SemanticAnalyzer::isReservedKeyword(const std::string& name) {

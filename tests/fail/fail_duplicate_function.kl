@@ -6,6 +6,6 @@ fn soma(nter a, nter b) nter {
     divolvi a - b;
 }
 
-fn inisiu() vaziu {
+fn inisiu() {
     mostran(soma(1, 2));
 }

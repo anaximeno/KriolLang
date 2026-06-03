@@ -49,7 +49,6 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 "nkuantu"       return TOKENIZE(NKUANTU);
 "num"           SAVE_TOKEN;   return TYPE_NUM;
 "nter"          SAVE_TOKEN;   return TYPE_NTER;
-"vaziu"         SAVE_TOKEN;   return TYPE_VOID;
 "bool"          SAVE_TOKEN;   return TYPE_BOOL;
 "textu"         SAVE_TOKEN;   return TYPE_TEXTU;
 "sin"           { yylval.string = new std::string("1"); return BOOL_LIT; }

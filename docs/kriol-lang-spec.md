@@ -39,7 +39,6 @@ Language specifications for the KriolLang programming language.
 ```xml
 <type_specifier> ::= T_TYPE_NUM
                    | T_TYPE_NTER
-                   | T_TYPE_VOID
                    | T_TYPE_BOOL
                    | T_TYPE_TEXTU
 
@@ -215,7 +214,6 @@ Below are the keywords and types in the language mapped to standard C.
 | num         | double       | Number       |
 | nter        | int64_t      | Integer      |
 | textu       | char*        | String       |
-| vaziu       | void         | Void         |
 | bool        | bool         | Boolean      |
 | sin         | true / 1     | True         |
 | nau         | false / 0    | False        |

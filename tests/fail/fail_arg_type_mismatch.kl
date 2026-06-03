@@ -1,4 +1,4 @@
-fn gritar(textu msg) vaziu {
+fn gritar(textu msg) {
     mostran(msg);
 }
 

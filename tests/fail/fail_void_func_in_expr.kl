@@ -1,4 +1,4 @@
-fn printHello() vaziu {
+fn printHello() {
     mostran("Hello");
 }
 
