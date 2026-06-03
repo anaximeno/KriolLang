@@ -130,6 +130,10 @@ Notes:
 
 ```xml
 <assignment_operator> ::= '='
+                        | '+='
+                        | '-='
+                        | '*='
+                        | '/='
 
 ```
 
@@ -193,10 +197,6 @@ Notes:
                    | T_SAI '(' <expression> ')' ';'
                    | T_KONFIRMA '(' <expression> ')' ';'
 ```
-
-## Memory Management
-
-TODO
 
 ---
 
