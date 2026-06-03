@@ -11,11 +11,11 @@ OUTPUT = kriol
 LLVM_CXXFLAGS := $(filter-out -fno-exceptions -std=%, $(shell llvm-config --cxxflags))
 LLVM_LDFLAGS  := $(shell llvm-config --ldflags --libs core native --system-libs 2>/dev/null)
 
-FLAGS = -std=c++17
+CPP_FLAGS = -std=c++17
 
-DBG_FLAGS = $(FLAGS) -g -Wall
+DBG_FLAGS = -g -Wall
 
-RLS_FLAGS = $(FLAGS) -O3 -DNDEBUG
+RLS_FLAGS = -O2 -DNDEBUG
 
 OBJS = main.o cli.o sema.o codegen.o parser.o scanner.o
 
@@ -23,7 +23,7 @@ RUNTIME_OBJ = runtime/kriol_runtime.o
 
 # KRIOL_RUNTIME_OBJ is a path relative to the kriol executable.
 # codegen.cc resolves it at runtime against the executable's directory.
-RUNTIME_DEFINE = -DKRIOL_RUNTIME_OBJ='"runtime/kriol_runtime.o"'
+RUNTIME_DEFINE = -DKRIOL_RUNTIME_OBJ='"$(RUNTIME_OBJ)"'
 
 # Sources that must NOT see LLVM headers (bison/flex generated code has
 # namespace-level std:: references that clash with LLVM's extra defines)
@@ -34,30 +34,31 @@ SRCS = main.cc \
 LLVM_SRC = src/kriol/cli.cc \
 	       src/kriol/codegen.cc
 
-$(RUNTIME_OBJ): runtime/kriol_runtime.c
-	$(CC_C) -c -O2 -o $@ $<
+RUNTIME_SRC = runtime/kriol_runtime.c
 
-# The default build is debug.
-# Change to release if wanted.
+$(RUNTIME_OBJ): runtime/kriol_runtime.c
+
 kriol: debug
 	@echo "\n\nRun the compiler with:"
 	@echo "\n  ./kriol --help\n"
 
-dbg-obj: $(SRCS) $(LLVM_SRC) $(RUNTIME_OBJ)
+dbg-obj: $(SRCS) $(LLVM_SRC) $(RUNTIME_SRC)
 	@echo "~~ Debug build ~~"
-	$(CC) -c $(DBG_FLAGS) $(SRCS)
-	$(CC) -c $(DBG_FLAGS) $(LLVM_CXXFLAGS) $(RUNTIME_DEFINE) $(LLVM_SRC)
+	$(CC_C) -c $(DBG_FLAGS) $(RUNTIME_SRC) -o $(RUNTIME_OBJ)
+	$(CC) -c $(CPP_FLAGS) $(DBG_FLAGS) $(SRCS)
+	$(CC) -c $(CPP_FLAGS) $(DBG_FLAGS) $(LLVM_CXXFLAGS) $(RUNTIME_DEFINE) $(LLVM_SRC)
 
 debug: dbg-obj
 	$(CC) -o $(OUTPUT) $(DBG_FLAGS) $(OBJS) $(LLVM_LDFLAGS)
 
-rls-obj: $(SRCS) $(LLVM_SRC) $(RUNTIME_OBJ)
+rls-obj: $(SRCS) $(LLVM_SRC) $(RUNTIME_SRC)
 	@echo "~~ Release build ~~"
-	$(CC) -c $(RLS_FLAGS) $(SRCS)
-	$(CC) -c $(RLS_FLAGS) $(LLVM_CXXFLAGS) $(RUNTIME_DEFINE) $(LLVM_SRC)
+	$(CC_C) -c $(RLS_FLAGS) $(RUNTIME_SRC) -o $(RUNTIME_OBJ)
+	$(CC) -c $(CPP_FLAGS) $(RLS_FLAGS) $(SRCS)
+	$(CC) -c $(CPP_FLAGS) $(RLS_FLAGS) $(LLVM_CXXFLAGS) $(RUNTIME_DEFINE) $(LLVM_SRC)
 
 release: rls-obj
-	$(CC) -o $(OUTPUT) $(RLS_FLAGS) $(OBJS) $(LLVM_LDFLAGS)
+	$(CC) -o $(OUTPUT) $(CPP_FLAGS) $(RLS_FLAGS) $(OBJS) $(LLVM_LDFLAGS)
 
 parser.cc parser.hh: rules/parser.y
 	bison -dt rules/parser.y -o parser.cc
