@@ -23,11 +23,11 @@ The syntax of this programming language was initially based on C, Go, and Rust, 
 
 For more concrete specifications about the language, you are recommended to read the [KriolLang Language Specification](./docs/kriol-lang-spec.md).
 
-The file extension of the KriolLang programming language is **.kl** (representing the word **Kriol** or **Kriolu** which is how Kriol or Creole is pronounced in Cape Verdean's Creole) and the compiler's name is **kriol**.
+The file extension of the KriolLang programming language is `.kl` or `.kriol` and the name of the lang's compiler is **kriol**.
 
 ## Installation
 
-It isn't installable on any OS yet, but it still can be tested using a Unix-based operating system. It depends on **clang-19**, **clang++-19**, and **llvm-19** to compile the source code and link user programs, and **bison** and **flex** to compile the language rules.
+It isn't directly installable on any OS yet, but it still can be tested using a Unix-based operating system. It depends on **clang-19**, **clang++-19**, and **llvm-19** to compile the source code and link user programs, and **bison** and **flex** to compile the language rules.
 
 If you are on a Debian (or Ubuntu) based Linux operating system you can install the dependencies using the following command:
 
@@ -68,19 +68,19 @@ After executing that command you may see the usage section and some of its optio
 An example of how it could be used is to compile one of the example files in the examples folder:
 
 ```bash
-./kriol examples/example03.kl
+./kriol examples/fibonacci-recursive.kl
 ```
 
-This compiles `example03.kl` to a native binary named `a.out` by default. Use `-o` to specify a different output name:
+This compiles `fibonacci-recursive.kl` to a native binary named `a.out` by default. Use `-o` to specify a different output name:
 
 ```bash
-./kriol examples/example03.kl -o example03
+./kriol examples/fibonacci-recursive.kl -o fibonacci-recursive
 ```
 
 Then execute the compiled binary with:
 
 ```bash
-./example03
+./fibonacci-recursive
 ```
 
 To inspect the generated LLVM IR instead of producing a binary:
