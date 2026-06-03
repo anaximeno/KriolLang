@@ -36,8 +36,6 @@ LLVM_SRC = src/kriol/cli.cc \
 
 RUNTIME_SRC = runtime/kriol_runtime.c
 
-$(RUNTIME_OBJ): runtime/kriol_runtime.c
-
 kriol: debug
 	@echo "\n\nRun the compiler with:"
 	@echo "\n  ./kriol --help\n"
