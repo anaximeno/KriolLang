@@ -25,35 +25,11 @@ For more concrete specifications about the language, you are recommended to read
 
 The file extension of the KriolLang programming language is `.kl` or `.kriol` and the name of the lang's compiler is **kriol**.
 
-## Installation
+# Install
 
-It isn't directly installable on any OS yet, but it still can be tested using a Unix-based operating system. It depends on **clang-19**, **clang++-19**, and **llvm-19** to compile the source code and link user programs, and **bison** and **flex** to compile the language rules.
+The easiest way to test it currently is using a linux-based OS (if you're on Windows I would recommend trying it inside WSL), and as a dependency at least make sure to have a cc linker available like `gcc` or `clang` to ensure proper linkage of the produced object file `.o` into the binary code required to run in the system. You can get the package [here](https://github.com/anaximeno/KriolLang/releases).
 
-If you are on a Debian (or Ubuntu) based Linux operating system you can install the dependencies using the following command:
-
-```sh
-apt install make flex bison clang-19 clang++-19 llvm-19 llvm-19-dev libgc-dev xxd cmake
-```
-
-NOTE: now pre-generated parser and scanner codes are provided in the repository, so, **flex** and **bison** can be omitted from the installation above, but if you are planning to make changes to the parser or scanner rules, they will still be necessary.
-
-After installing the dependencies, compile the compiler using:
-
-```sh
-cmake -B build && cmake --build build
-```
-
-For a release build use:
-
-```sh
-cmake -B build/release -DCMAKE_BUILD_TYPE=Release -DKRIOL_STATIC=ON && cmake --build build/release
-```
-
-The result of the compilation will be an executable named **kriol** which you can execute using:
-
-```sh
-./kriol
-```
+After downloading the appropiate file make sure to decompress it, and check the following section on how to use it.
 
 ## Usage
 
@@ -87,6 +63,34 @@ To inspect the generated LLVM IR instead of producing a binary:
 
 ```sh
 ./kriol examples/example03.kl --emit-ir
+```
+
+## Build
+
+If you want to build the project, currently it only works mostly on Linux based operating systems. It depends mainly on **clang-19**, **clang++-19**, and **llvm-19** to compile the source code and link user programs, and **bison** and **flex** to compile the language rules.
+
+If you are on a Debian (or Ubuntu) based Linux operating system you can install the dependencies using the following command:
+
+```sh
+apt install make flex bison clang-19 clang++-19 llvm-19 llvm-19-dev libgc-dev xxd cmake
+```
+
+After installing the dependencies, compile the compiler using:
+
+```sh
+cmake -B build && cmake --build build
+```
+
+For a release build use:
+
+```sh
+cmake -B build/release -DCMAKE_BUILD_TYPE=Release -DKRIOL_STATIC=ON && cmake --build build/release
+```
+
+The result of the compilation will be an executable named **kriol** which you can execute using:
+
+```sh
+./kriol
 ```
 
 ## Tests
