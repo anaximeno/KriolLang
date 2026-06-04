@@ -27,9 +27,22 @@ The file extension of the KriolLang programming language is `.kr` or `.kriol` an
 
 # Install
 
-The easiest way to test it currently is using a linux-based OS (if you're on Windows I would recommend trying it inside WSL), and as a dependency at least make sure to have a cc linker available like `gcc` or `clang` to ensure proper linkage of the produced object file `.o` into the binary code required to run in the system. You can get the package [here](https://github.com/anaximeno/KriolLang/releases).
+The easiest way to test it currently is using a linux-based OS (if you're on Windows I would recommend trying it inside WSL), and as a dependency at least make sure to have a cc linker available like `gcc` or `clang` to ensure proper linkage of the produced object file `.o` into the binary code required to run in the system.
 
-After downloading the appropiate file make sure to decompress it, and check the following section on how to use it.
+You can install it using the following command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/anaximeno/KriolLang/refs/heads/main/install.sh | sh -s -- --pre
+```
+
+After that add the following to  your shell env:
+
+```sh
+export PATH="$HOME/.kriol:$PATH"
+```
+
+Then close and reopen the shell and try `kriol --version`.
+
 
 ## Usage
 
