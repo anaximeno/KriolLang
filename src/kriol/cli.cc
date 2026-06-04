@@ -40,7 +40,7 @@ const std::string& cli::GetSourceFile() {
 
 void cli::PrintErr(std::string message)
 {
-    std::cerr << KL_STANDARD_COMPILER_NAME << ": err: " << message << std::endl;
+    std::cerr << KR_STANDARD_COMPILER_NAME << ": err: " << message << std::endl;
 }
 
 void cli::PrintErr(std::string message, int exitNum)
@@ -51,7 +51,7 @@ void cli::PrintErr(std::string message, int exitNum)
 
 void cli::PrintErr(const std::string& file, int line, const std::string& msg, int exitNum) {
     std::string location = file.empty() ? "" : file + ":" + std::to_string(line) + ": ";
-    std::cerr << KL_STANDARD_COMPILER_NAME << ": err: " << location << msg << std::endl;
+    std::cerr << KR_STANDARD_COMPILER_NAME << ": err: " << location << msg << std::endl;
     if (exitNum >= 0) throw cli::FatalError(location + msg, exitNum);
 }
 
@@ -93,9 +93,9 @@ void cli::Compiler::DefineArgs(void)
         .implicit_value(true);
 
     Parser->add_argument("-T", "--ignore-extension")
-        .help("Without this flag, only files with extensions '" +
-             std::string(KL_STANDARD_FILE_EXTENSION) + "' or '" +
-             std::string(KL_ALTERNATIVE_FILE_EXTENSION) +
+        .help("Without this flag, only files with extensions '." +
+             std::string(KR_STANDARD_FILE_EXTENSION) + "' or '." +
+             std::string(KR_ALTERNATIVE_FILE_EXTENSION) +
              "' will be allowed by the compiler.")
         .default_value(false)
         .implicit_value(true);
@@ -211,11 +211,11 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
     };
 
     if (Args.shouldCheckExtension &&
-        (matchAtEndOfFilename(KL_STANDARD_FILE_EXTENSION) == std::string::npos) &&
-        (matchAtEndOfFilename(KL_ALTERNATIVE_FILE_EXTENSION) == std::string::npos))
+        (matchAtEndOfFilename(KR_STANDARD_FILE_EXTENSION) == std::string::npos) &&
+        (matchAtEndOfFilename(KR_ALTERNATIVE_FILE_EXTENSION) == std::string::npos))
     {
         cli::PrintErr("File format not recognized. Filename should end with a '" +
-            std::string(KL_STANDARD_FILE_EXTENSION) + "' or '" + std::string(KL_ALTERNATIVE_FILE_EXTENSION) + "' file extension.", 1);
+            std::string(KR_STANDARD_FILE_EXTENSION) + "' or '" + std::string(KR_ALTERNATIVE_FILE_EXTENSION) + "' file extension.", 1);
     }
 
     ast::BlockSttmt *ProgramAST = KriolLangParserWrapper::ParseCode(Args.filename, true);

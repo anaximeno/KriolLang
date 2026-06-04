@@ -23,7 +23,7 @@ The syntax of this programming language was initially based on C, Go, and Rust, 
 
 For more concrete specifications about the language, you are recommended to read the [KriolLang Language Specification](./docs/kriol-lang-spec.md).
 
-The file extension of the KriolLang programming language is `.kl` or `.kriol` and the name of the lang's compiler is **kriol**.
+The file extension of the KriolLang programming language is `.kr` or `.kriol` and the name of the lang's compiler is **kriol**.
 
 # Install
 
@@ -44,13 +44,13 @@ After executing that command you may see the usage section and some of its optio
 An example of how it could be used is to compile one of the example files in the examples folder:
 
 ```sh
-./kriol examples/fibonacci-recursive.kl
+./kriol examples/fibonacci-recursive.kr
 ```
 
-This compiles `fibonacci-recursive.kl` to a native binary named `a.out` by default. Use `-o` to specify a different output name:
+This compiles `fibonacci-recursive.kr` to a native binary named `a.out` by default. Use `-o` to specify a different output name:
 
 ```sh
-./kriol examples/fibonacci-recursive.kl -o fibonacci-recursive
+./kriol examples/fibonacci-recursive.kr -o fibonacci-recursive
 ```
 
 Then execute the compiled binary with:
@@ -62,7 +62,7 @@ Then execute the compiled binary with:
 To inspect the generated LLVM IR instead of producing a binary:
 
 ```sh
-./kriol examples/example03.kl --emit-ir
+./kriol examples/example03.kr --emit-ir
 ```
 
 ## Build

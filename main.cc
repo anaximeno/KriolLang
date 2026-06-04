@@ -4,7 +4,7 @@
 
 int main(int argc, const char* const* argv) {
     try {
-        kriol::cli::Compiler Comp(KL_STANDARD_COMPILER_NAME, KL_VERSION_STRING);
+        kriol::cli::Compiler Comp(KR_STANDARD_COMPILER_NAME, KR_VERSION_STRING);
         Comp.Run(argc, argv);
         kriol::cli::Compiler::Cleanup();
         return 0;

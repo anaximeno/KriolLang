@@ -14,8 +14,8 @@ fi
 echo -e "\n~~ Running tests ~~\n"
 pass=0; fail=0
 
-# ---- examples/*.kl --------------------------------------------------------
-for f in "$ROOT"/examples/*.kl; do
+# ---- examples/*.kr --------------------------------------------------------
+for f in "$ROOT"/examples/*.kr; do
     printf "  %-44s" "$f"
     tmpbin=$(mktemp /tmp/kriol_XXXX)
     if "$KRIOL" "$f" -o "$tmpbin" 2>/dev/null && \
@@ -27,9 +27,9 @@ for f in "$ROOT"/examples/*.kl; do
     rm -f "$tmpbin"
 done
 
-# ---- tests/pass/*.kl -------------------------------------------------------
+# ---- tests/pass/*.kr -------------------------------------------------------
 if [ -d "$ROOT/tests/pass" ]; then
-    for f in "$ROOT"/tests/pass/*.kl; do
+    for f in "$ROOT"/tests/pass/*.kr; do
         [ -f "$f" ] || continue
         printf "  %-44s" "$f"
         tmpbin=$(mktemp /tmp/kriol_XXXX)
@@ -43,9 +43,9 @@ if [ -d "$ROOT/tests/pass" ]; then
     done
 fi
 
-# ---- tests/fail/*.kl -------------------------------------------------------
+# ---- tests/fail/*.kr -------------------------------------------------------
 if [ -d "$ROOT/tests/fail" ]; then
-    for f in "$ROOT"/tests/fail/*.kl; do
+    for f in "$ROOT"/tests/fail/*.kr; do
         [ -f "$f" ] || continue
         printf "  %-44s" "$f"
         tmpbin=$(mktemp /tmp/kriol_fail_bin_XXXX)
