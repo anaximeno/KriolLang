@@ -11,7 +11,7 @@ if [ -z "$KRIOL" ] || [ -z "$ROOT" ]; then
     exit 1
 fi
 
-echo "\n~~ Running tests ~~\n"
+echo -e "\n~~ Running tests ~~\n"
 pass=0; fail=0
 
 # ---- examples/*.kl --------------------------------------------------------
@@ -78,5 +78,5 @@ if [ -d "$ROOT/tests/fail" ]; then
     done
 fi
 
-echo "\n  $pass/$((pass+fail)) passed\n"
+echo -e "\n  $pass/$((pass+fail)) passed\n"
 [ $fail -eq 0 ]
