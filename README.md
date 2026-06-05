@@ -32,7 +32,7 @@ The easiest way to test it currently is using a linux-based OS (if you're on Win
 You can install it using the following command:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/anaximeno/KriolLang/refs/heads/main/install.sh | sh -s -- --pre
+curl -fsSL https://raw.githubusercontent.com/kriol-lang/kriol/refs/heads/main/install.sh | sh -s -- --pre
 ```
 
 After that add the following to  your shell env:
