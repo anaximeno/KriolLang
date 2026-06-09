@@ -11,6 +11,5 @@ fn soma(num n) num {
 
 fn inisiu() {
     num n = 10;
-    num resultadu = soma(n);
-    mostran(f"Soma di 1 ti {n} é igual a {resultadu}.");
+    mostran(f"Soma di 1 ti {n} é igual a {soma(n)}.");
 }

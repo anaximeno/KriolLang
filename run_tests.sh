@@ -15,7 +15,7 @@ echo -e "\n~~ Running tests ~~\n"
 pass=0; fail=0
 
 # ---- examples/*.kr --------------------------------------------------------
-for f in "$ROOT"/examples/*.kr; do
+for f in "$ROOT"/examples/*.kriol; do
     printf "  %-44s" "$f"
     tmpbin=$(mktemp /tmp/kriol_XXXX)
     if "$KRIOL" "$f" -o "$tmpbin" 2>/dev/null && \

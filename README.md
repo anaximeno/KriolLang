@@ -57,13 +57,13 @@ After executing that command you may see the usage section and some of its optio
 An example of how it could be used is to compile one of the example files in the examples folder:
 
 ```sh
-./kriol examples/fibonacci-recursive.kr
+./kriol examples/fibonacci-recursive.kriol
 ```
 
-This compiles `fibonacci-recursive.kr` to a native binary named `a.out` by default. Use `-o` to specify a different output name:
+This compiles `fibonacci-recursive.kriol` to a native binary named `a.out` by default. Use `-o` to specify a different output name:
 
 ```sh
-./kriol examples/fibonacci-recursive.kr -o fibonacci-recursive
+./kriol examples/fibonacci-recursive.kriol -o fibonacci-recursive
 ```
 
 Then execute the compiled binary with:
@@ -75,7 +75,7 @@ Then execute the compiled binary with:
 To inspect the generated LLVM IR instead of producing a binary:
 
 ```sh
-./kriol examples/example03.kr --emit-ir
+./kriol examples/example03.kriol --emit-ir
 ```
 
 ## Build
