@@ -334,7 +334,9 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
                 ccPath,
                 "--target=" + std::string(KRIOL_WASI_TARGET),
                 "--sysroot=" + std::string(KRIOL_WASI_SYSROOT),
-                objPath
+                "-nostartfiles",
+                objPath,
+                "-Wl,--export=_start"
             };
             linkArgs.push_back(tempLibGc);
             linkArgs.push_back("-o");

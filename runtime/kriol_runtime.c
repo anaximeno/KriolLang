@@ -10,6 +10,14 @@
 #include <stdlib.h>
 #include <gc.h>
 
+#ifdef KRIOL_RUNTIME_WASI_START
+extern int main(void);
+
+void _start(void) {
+    exit(main());
+}
+#endif
+
 void __kriol_gc_init(void) {
     GC_INIT();
 }
