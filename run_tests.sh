@@ -78,5 +78,34 @@ if [ -d "$ROOT/tests/fail" ]; then
     done
 fi
 
+# ---- wasm32-wasi compile checks --------------------------------------------
+if "$KRIOL" --help 2>&1 | grep -Fq "native or wasm32-wasi"; then
+    printf "  %-44s" "wasm32-wasi hello-world"
+    tmpwasm=$(mktemp /tmp/kriol_wasm_XXXX.wasm)
+    if "$KRIOL" "$ROOT/examples/hello-world.kriol" --target wasm32-wasi -o "$tmpwasm" 2>/dev/null; then
+        if command -v file >/dev/null 2>&1; then
+            if file "$tmpwasm" | grep -Fq "WebAssembly"; then
+                echo " PASS"; pass=$((pass+1))
+            else
+                echo " FAIL (not a WebAssembly module)"; fail=$((fail+1))
+            fi
+        else
+            echo " PASS"; pass=$((pass+1))
+        fi
+    else
+        echo " FAIL"; fail=$((fail+1))
+    fi
+    rm -f "$tmpwasm"
+
+    printf "  %-44s" "wasm32-wasi f-string gc"
+    tmpwasm=$(mktemp /tmp/kriol_wasm_fstr_gc_XXXX.wasm)
+    if "$KRIOL" "$ROOT/tests/pass/mostra_interpolation.kr" --target wasm32-wasi -o "$tmpwasm" 2>/dev/null; then
+        echo " PASS"; pass=$((pass+1))
+    else
+        echo " FAIL"; fail=$((fail+1))
+    fi
+    rm -f "$tmpwasm"
+fi
+
 echo -e "\n  $pass/$((pass+fail)) passed\n"
 [ $fail -eq 0 ]

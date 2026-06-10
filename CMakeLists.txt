@@ -26,6 +26,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 option(KRIOL_STATIC "Statically link the kriol binary in Release builds" OFF)
+option(KRIOL_ENABLE_WASM "Build the kriol compiler with wasm32-wasi output support" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -46,12 +47,25 @@ find_package(LLVM REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 
-llvm_map_components_to_libnames(
-    LLVM_LIBS
+set(KRIOL_LLVM_COMPONENTS
     core
     native
     linker
     bitreader
+)
+
+if(KRIOL_ENABLE_WASM)
+    list(APPEND KRIOL_LLVM_COMPONENTS
+        WebAssemblyCodeGen
+        WebAssemblyDesc
+        WebAssemblyInfo
+        WebAssemblyUtils
+    )
+endif()
+
+llvm_map_components_to_libnames(
+    LLVM_LIBS
+    ${KRIOL_LLVM_COMPONENTS}
 )
 
 separate_arguments(
@@ -180,6 +194,14 @@ target_compile_options(
     PRIVATE
     $<$<CONFIG:Debug>:-g -Wall>
     $<$<CONFIG:Release>:-O2 -DNDEBUG>
+)
+
+target_compile_definitions(
+    kriol
+    PRIVATE
+    KRIOL_ENABLE_WASM=$<BOOL:${KRIOL_ENABLE_WASM}>
+    KRIOL_WASI_TARGET="${KRIOL_WASI_TARGET}"
+    KRIOL_WASI_SYSROOT="${KRIOL_WASI_SYSROOT}"
 )
 
 # -----------------------------------------------------------------------------

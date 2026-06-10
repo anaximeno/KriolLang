@@ -19,6 +19,15 @@
 namespace kriol {
 namespace ast {
 
+    enum class CodegenTarget {
+        Native,
+        Wasm32Wasi
+    };
+
+    struct EmitOptions {
+        CodegenTarget Target = CodegenTarget::Native;
+    };
+
     class CodeGenVisitor : public Visitor {
     private:
         llvm::LLVMContext Context;
@@ -98,9 +107,11 @@ namespace ast {
         /// Serialise the module as LLVM IR text.
         std::string emitIR();
 
+        /// Compile the module to the selected executable/object format.
+        void emit(const std::string& outputPath, const EmitOptions& options = {});
+
         /// Compile the module to a native executable at outputPath.
-        /// argv0 is used to locate the runtime object relative to the executable.
-        void emitNative(const std::string& outputPath, const char* argv0 = nullptr);
+        void emitNative(const std::string& outputPath);
 
         void visit(VarDeclSttmt&      node) override;
         void visit(BlockSttmt&        node) override;

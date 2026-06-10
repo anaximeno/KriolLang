@@ -21,11 +21,16 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <cstdio>
+#include <initializer_list>
 
 // NOTE: these are generated and injected in compile time by
 // the build system.
-#include "kriol_runtime.bc.h"
-#include "libgc_static.h"
+#include "kriol_runtime_native_gc.bc.h"
+#include "libgc_native.h"
+#if KRIOL_ENABLE_WASM
+#include "kriol_runtime_wasm32_wasi_gc.bc.h"
+#include "libgc_wasm32_wasi.h"
+#endif
 
 
 // Interpret backslash escapes in a raw string (without surrounding quotes).
@@ -73,6 +78,75 @@ namespace {
 using kriol::typeutils::arrayElementType;
 using kriol::typeutils::parseType;
 
+struct EmbeddedBlob {
+    const unsigned char* Data;
+    unsigned int Len;
+};
+
+static void initializeTargets() {
+    static bool initialized = false;
+    if (initialized) return;
+
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmParser();
+    llvm::InitializeNativeTargetAsmPrinter();
+
+#if KRIOL_ENABLE_WASM
+    LLVMInitializeWebAssemblyTargetInfo();
+    LLVMInitializeWebAssemblyTarget();
+    LLVMInitializeWebAssemblyTargetMC();
+    LLVMInitializeWebAssemblyAsmPrinter();
+#endif
+
+    initialized = true;
+}
+
+static std::string findProgram(std::initializer_list<const char*> names,
+                               const std::string& description) {
+    for (const char* name : names) {
+        auto path = llvm::sys::findProgramByName(name);
+        if (path) return *path;
+    }
+    throw std::runtime_error("The " + description + " could not be found in the system.");
+}
+
+static std::string writeTempBlob(const char* stem,
+                                 const char* suffix,
+                                 EmbeddedBlob blob) {
+    llvm::SmallString<128> tempPath;
+    std::error_code ec = llvm::sys::fs::createTemporaryFile(stem, suffix, tempPath);
+    if (ec) {
+        throw std::runtime_error("Failed to allocate temporary file: " + ec.message());
+    }
+
+    llvm::raw_fd_ostream out(tempPath, ec, llvm::sys::fs::OF_None);
+    if (ec) {
+        throw std::runtime_error("Failed to open temporary file: " + ec.message());
+    }
+
+    out.write(reinterpret_cast<const char*>(blob.Data), blob.Len);
+    out.close();
+    return std::string(tempPath.str());
+}
+
+static void runProgram(const std::string& program,
+                       const std::vector<std::string>& ownedArgs,
+                       const std::string& failurePrefix) {
+    std::vector<llvm::StringRef> args;
+    args.reserve(ownedArgs.size());
+    for (const auto& arg : ownedArgs)
+        args.push_back(arg);
+
+    std::string err;
+    bool execFailed = false;
+    int ret = llvm::sys::ExecuteAndWait(
+        program, args, std::nullopt, {}, 0, 0, &err, &execFailed
+    );
+
+    if (execFailed || ret != 0)
+        throw std::runtime_error(failurePrefix + err);
+}
+
 }
 
 using namespace kriol::ast;
@@ -81,10 +155,7 @@ CodeGenVisitor::CodeGenVisitor(const std::string& moduleName)
     : Mod(std::make_unique<llvm::Module>(moduleName, Context)),
       Builder(std::make_unique<llvm::IRBuilder<>>(Context))
 {
-    // NOTE: Only the native builds are supported for now
-    llvm::InitializeNativeTarget();
-    llvm::InitializeNativeTargetAsmParser();
-    llvm::InitializeNativeTargetAsmPrinter();
+    initializeTargets();
 }
 
 llvm::Type* CodeGenVisitor::mapType(const std::string& t) {
@@ -178,8 +249,34 @@ std::string CodeGenVisitor::emitIR() {
     return buf;
 }
 
-void CodeGenVisitor::emitNative(const std::string& outputPath, const char* argv0) {
-    llvm::StringRef bcData(reinterpret_cast<const char*>(kriol_runtime_bc), kriol_runtime_bc_len);
+void CodeGenVisitor::emitNative(const std::string& outputPath) {
+    emit(outputPath, {});
+}
+
+void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& options) {
+    EmbeddedBlob runtimeBlob{};
+    EmbeddedBlob gcBlob{};
+    std::string targetTriple;
+    std::string objPath = outputPath + ".o";
+
+    switch (options.Target) {
+        case CodegenTarget::Native:
+            targetTriple = llvm::sys::getDefaultTargetTriple();
+            runtimeBlob = EmbeddedBlob{kriol_runtime_native_gc_bc, kriol_runtime_native_gc_bc_len};
+            gcBlob = EmbeddedBlob{libgc_native_a, libgc_native_a_len};
+            break;
+        case CodegenTarget::Wasm32Wasi:
+#if KRIOL_ENABLE_WASM
+            targetTriple = KRIOL_WASI_TARGET;
+            runtimeBlob = EmbeddedBlob{kriol_runtime_wasm32_wasi_gc_bc, kriol_runtime_wasm32_wasi_gc_bc_len};
+            gcBlob = EmbeddedBlob{libgc_wasm32_wasi_a, libgc_wasm32_wasi_a_len};
+            break;
+#else
+            throw std::runtime_error("This kriol compiler was built without wasm32-wasi support.");
+#endif
+    }
+
+    llvm::StringRef bcData(reinterpret_cast<const char*>(runtimeBlob.Data), runtimeBlob.Len);
     auto memBuf = llvm::MemoryBuffer::getMemBuffer(bcData, "kriol_runtime", false);
 
     auto expectedMod = llvm::parseBitcodeFile(*memBuf, Context);
@@ -193,13 +290,10 @@ void CodeGenVisitor::emitNative(const std::string& outputPath, const char* argv0
         throw std::runtime_error("Failed to merge runtime bitcode into the main module.");
     }
 
-    std::string objPath = outputPath + ".o";
-
-    auto TargetTriple = llvm::sys::getDefaultTargetTriple();
-    Mod->setTargetTriple(TargetTriple);
+    Mod->setTargetTriple(targetTriple);
 
     std::string Error;
-    auto Target = llvm::TargetRegistry::lookupTarget(TargetTriple, Error);
+    auto Target = llvm::TargetRegistry::lookupTarget(targetTriple, Error);
     if (!Target) {
         throw std::runtime_error("Failed to find Target: " + Error);
     }
@@ -208,7 +302,7 @@ void CodeGenVisitor::emitNative(const std::string& outputPath, const char* argv0
     auto Features = "";
     llvm::TargetOptions opt;
     auto RM = std::optional<llvm::Reloc::Model>();
-    auto TargetMachine = Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
+    auto TargetMachine = Target->createTargetMachine(targetTriple, CPU, Features, opt, RM);
 
     Mod->setDataLayout(TargetMachine->createDataLayout());
 
@@ -227,44 +321,47 @@ void CodeGenVisitor::emitNative(const std::string& outputPath, const char* argv0
     pass.run(*Mod);
     dest.flush();
 
-    llvm::SmallString<128> tempLibGc;
-    std::error_code ecLib = llvm::sys::fs::createTemporaryFile("embedded_libgc", "a", tempLibGc);
-    if (ecLib) {
-        throw std::runtime_error("Failed to allocate libgc to temporary folder: " + ecLib.message());
-    }
+    std::string tempLibGc;
+    const char* stem = options.Target == CodegenTarget::Wasm32Wasi
+        ? "embedded_libgc_wasm32_wasi"
+        : "embedded_libgc_native";
+    tempLibGc = writeTempBlob(stem, "a", gcBlob);
 
-    llvm::raw_fd_ostream libOut(tempLibGc, ecLib, llvm::sys::fs::OF_None);
-    libOut.write(reinterpret_cast<const char*>(embedded_libgc_a), embedded_libgc_a_len);
-    libOut.close();
-
-    auto ccPath = llvm::sys::findProgramByName("clang");
-    if (!ccPath) {
-        ccPath = llvm::sys::findProgramByName("cc");
-        if (!ccPath) throw std::runtime_error("The linker 'clang' or 'cc' could not be found in the system.");
-    }
-
-    std::vector<llvm::StringRef> linkArgs = {
-        *ccPath,
-        "-no-pie",
-        objPath,
-        tempLibGc.str(),
-        "-o",
-        outputPath,
-        "-lm"
-    };
-
-    std::string linkErrStr;
-    bool execFailed = false;
-    int ret = llvm::sys::ExecuteAndWait(
-        *ccPath, linkArgs, std::nullopt, {}, 0, 0, &linkErrStr, &execFailed
-    );
-
-    if (execFailed || ret != 0) {
-        throw std::runtime_error("Failure in the final linkage: " + linkErrStr);
+    try {
+        if (options.Target == CodegenTarget::Wasm32Wasi) {
+            std::string ccPath = findProgram({"clang-19", "clang"}, "WASI linker 'clang-19' or 'clang'");
+            std::vector<std::string> linkArgs = {
+                ccPath,
+                "--target=" + std::string(KRIOL_WASI_TARGET),
+                "--sysroot=" + std::string(KRIOL_WASI_SYSROOT),
+                objPath
+            };
+            linkArgs.push_back(tempLibGc);
+            linkArgs.push_back("-o");
+            linkArgs.push_back(outputPath);
+            linkArgs.push_back("-lm");
+            runProgram(ccPath, linkArgs, "Failure in the final WASI linkage: ");
+        } else {
+            std::string ccPath = findProgram({"clang", "cc"}, "linker 'clang' or 'cc'");
+            std::vector<std::string> linkArgs = {
+                ccPath,
+                "-no-pie",
+                objPath
+            };
+            linkArgs.push_back(tempLibGc);
+            linkArgs.push_back("-o");
+            linkArgs.push_back(outputPath);
+            linkArgs.push_back("-lm");
+            runProgram(ccPath, linkArgs, "Failure in the final linkage: ");
+        }
+    } catch (...) {
+        std::remove(objPath.c_str());
+        if (!tempLibGc.empty()) llvm::sys::fs::remove(tempLibGc);
+        throw;
     }
 
     std::remove(objPath.c_str());
-    llvm::sys::fs::remove(tempLibGc);
+    if (!tempLibGc.empty()) llvm::sys::fs::remove(tempLibGc);
 }
 
 void CodeGenVisitor::visit(VarDeclSttmt& node) {

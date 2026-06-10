@@ -25,5 +25,8 @@ rules/parser
 # Test error output
 *.err
 
+# Wasm compilation output
+*.wasm
+
 # Cmake Build dir
 build/

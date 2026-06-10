@@ -88,9 +88,23 @@ void cli::Compiler::DefineArgs(void)
         .nargs(1);
 
     Parser->add_argument("--emit-ir")
-        .help("Emit LLVM IR text to stdout (or -o file) instead of compiling natively.")
+        .help("Emit LLVM IR text to stdout (or -o file) instead of compiling.")
         .default_value(false)
         .implicit_value(true);
+
+#if KRIOL_ENABLE_WASM
+    Parser->add_argument("--target")
+        .help("Output target: native or wasm32-wasi.")
+        .default_value(std::string("native"))
+        .nargs(1)
+        .choices("native", "wasm32-wasi");
+#else
+    Parser->add_argument("--target")
+        .help("Output target: native.")
+        .default_value(std::string("native"))
+        .nargs(1)
+        .choices("native");
+#endif
 
     Parser->add_argument("-T", "--ignore-extension")
         .help("Without this flag, only files with extensions '." +
@@ -136,6 +150,7 @@ void cli::Compiler::ParseArgs(const int argc, const char *const *argv)
         Args.outfile = "";
     }
 
+    Args.target               = Parser->get<std::string>("--target");
     Args.emitIR               = Parser->get<bool>("--emit-ir");
     Args.shouldCheckExtension = !Parser->get<bool>("--ignore-extension");
 }
@@ -249,8 +264,16 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
         }
         else
         {
-            std::string outfile = Args.outfile != "" ? Args.outfile : "a.out";
-            codegenVisitor.emitNative(outfile, argv[0]);
+            ast::EmitOptions options;
+            options.Target = Args.target == "wasm32-wasi"
+                ? ast::CodegenTarget::Wasm32Wasi
+                : ast::CodegenTarget::Native;
+
+            std::string defaultOutfile = options.Target == ast::CodegenTarget::Wasm32Wasi
+                ? "a.wasm"
+                : "a.out";
+            std::string outfile = Args.outfile != "" ? Args.outfile : defaultOutfile;
+            codegenVisitor.emit(outfile, options);
         }
     }
     catch (std::exception &err)

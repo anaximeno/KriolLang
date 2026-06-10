@@ -78,6 +78,18 @@ To inspect the generated LLVM IR instead of producing a binary:
 ./kriol examples/example03.kriol --emit-ir
 ```
 
+To compile a Kriol program to a WASI WebAssembly module:
+
+```sh
+./kriol examples/hello-world.kriol --target wasm32-wasi -o hello.wasm
+```
+
+The generated module is a WASI command module. For a browser playground, run it
+through a WASI preview1 JavaScript shim and capture stdout to display
+`mostra`/`mostran` output.
+
+Formatted strings use the embedded Boehm GC runtime, including for WASI output.
+
 ## Build
 
 If you want to build the project, currently it only works mostly on Linux based operating systems. It depends mainly on **clang-19**, **clang++-19**, and **llvm-19** to compile the source code and link user programs, and **bison** and **flex** to compile the language rules.
@@ -86,6 +98,19 @@ If you are on a Debian (or Ubuntu) based Linux operating system you can install 
 
 ```sh
 apt install make flex bison clang-19 clang++-19 llvm-19 llvm-19-dev libgc-dev xxd cmake
+```
+
+WASI output also needs the WASI libc and compiler runtime packages:
+
+```sh
+apt install wasi-libc libclang-rt-19-dev-wasm32
+```
+
+WASM support is enabled by default when building `kriol`. If you want a
+native-only compiler with fewer build dependencies, configure with:
+
+```sh
+cmake -B build -DKRIOL_ENABLE_WASM=OFF
 ```
 
 After installing the dependencies, compile the compiler using:

@@ -16,7 +16,8 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends flex bison \
-            clang-19 llvm-19 llvm-19-dev cmake xxd
+            clang-19 llvm-19 llvm-19-dev cmake xxd \
+            wasi-libc libclang-rt-19-dev-wasm32
 
       - name: Add LLVM 19 to PATH
         run: echo "/usr/lib/llvm-19/bin" >> $GITHUB_PATH
