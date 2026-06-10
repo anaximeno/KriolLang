@@ -79,7 +79,7 @@ if [ -d "$ROOT/tests/fail" ]; then
 fi
 
 # ---- wasm32-wasi compile checks --------------------------------------------
-if "$KRIOL" --help 2>&1 | grep -Fq "native or wasm32-wasi"; then
+if "$KRIOL" --help 2>&1 | grep -Fq "wasm32-wasi"; then
     printf "  %-44s" "wasm32-wasi hello-world"
     tmpwasm=$(mktemp /tmp/kriol_wasm_XXXX.wasm)
     if "$KRIOL" "$ROOT/examples/hello-world.kriol" --target wasm32-wasi -o "$tmpwasm" 2>/dev/null; then
