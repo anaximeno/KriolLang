@@ -18,6 +18,11 @@
 #include <llvm/Support/Program.h>
 #include <llvm/Support/Path.h>
 
+#if KRIOL_USE_EMBEDDED_LLD
+#include <lld/Common/Driver.h>
+LLD_HAS_DRIVER(wasm)
+#endif
+
 #include <stdexcept>
 #include <cstdlib>
 #include <cstdio>
@@ -92,6 +97,7 @@ struct TargetResources {
 
 struct WasiLinkPlan {
     std::string LinkerPath;
+    std::string OutputPath;
     std::vector<std::string> Args;
 };
 
@@ -121,6 +127,16 @@ static std::string findProgram(std::initializer_list<const char*> names,
     }
     throw std::runtime_error("The " + description + " could not be found in the system.");
 }
+
+#if KRIOL_USE_EMBEDDED_LLD
+static std::string findProgramOptional(std::initializer_list<const char*> names) {
+    for (const char* name : names) {
+        auto path = llvm::sys::findProgramByName(name);
+        if (path) return *path;
+    }
+    return {}; // ???: is this a valid string?
+}
+#endif
 
 static std::string writeTempBlob(const char* stem,
                                  const char* suffix,
@@ -226,8 +242,16 @@ static std::string getWasiCompilerRtBuiltins(const std::string& clangPath) {
 static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
                                       const std::string& tempLibGc,
                                       const std::string& outputPath) {
-    std::string wasmLdPath = findProgram({"wasm-ld-20", "wasm-ld-19", "wasm-ld"},
-                                         "WASI linker 'wasm-ld-20', 'wasm-ld-19', or 'wasm-ld'");
+#if KRIOL_USE_EMBEDDED_LLD
+    std::string wasmLdPath = findProgramOptional({"wasm-ld-20", "wasm-ld-19", "wasm-ld"});
+    std::string linkerArg0 = wasmLdPath.empty() ? "wasm-ld" : wasmLdPath;
+#else
+    std::string wasmLdPath = findProgram(
+        {"wasm-ld-20", "wasm-ld-19", "wasm-ld"},
+        "WASI linker 'wasm-ld-20', 'wasm-ld-19', or 'wasm-ld'"
+    );
+    std::string linkerArg0 = wasmLdPath;
+#endif
     std::string clangPath = findProgram({"clang-20", "clang-19", "clang"},
                                         "WASI toolchain driver 'clang-20', 'clang-19', or 'clang'");
     std::string wasiLibDir = getWasiLibDir();
@@ -236,8 +260,9 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
 
     WasiLinkPlan plan;
     plan.LinkerPath = wasmLdPath;
+    plan.OutputPath = outputPath;
     plan.Args = {
-        wasmLdPath,
+        linkerArg0,
         "-m",
         "wasm32",
         "-L" + wasiLibDir,
@@ -255,7 +280,49 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
 }
 
 static void linkWasmWithWasmLd(const WasiLinkPlan& plan) {
+    if (plan.LinkerPath.empty())
+        throw std::runtime_error("The WASI linker fallback is not available.");
     runProgram(plan.LinkerPath, plan.Args, "Failure in the final WASI linkage: ");
+}
+
+#if KRIOL_USE_EMBEDDED_LLD
+static void linkWasmWithEmbeddedLld(const WasiLinkPlan& plan) {
+    std::vector<const char*> args;
+    args.reserve(plan.Args.size());
+    for (const auto& arg : plan.Args)
+        args.push_back(arg.c_str());
+
+    std::string stdoutText;
+    std::string stderrText;
+    llvm::raw_string_ostream stdoutStream(stdoutText);
+    llvm::raw_string_ostream stderrStream(stderrText);
+
+    lld::DriverDef drivers[] = {
+        {lld::Wasm, &lld::wasm::link}
+    };
+    lld::Result result = lld::lldMain(args, stdoutStream, stderrStream, drivers);
+    stdoutStream.flush();
+    stderrStream.flush();
+
+    if (result.retCode != 0 || !result.canRunAgain) {
+        std::string detail = stderrText.empty() ? stdoutText : stderrText;
+        if (!result.canRunAgain && detail.empty())
+            detail = "LLD reported that it cannot be called again.";
+        throw std::runtime_error("Failure in the embedded WASI linkage: " + detail);
+    }
+}
+#endif
+
+static void linkWasm(const WasiLinkPlan& plan) {
+#if KRIOL_USE_EMBEDDED_LLD
+    try {
+        linkWasmWithEmbeddedLld(plan);
+        return;
+    } catch (const std::exception&) {
+        llvm::sys::fs::remove(plan.OutputPath);
+    }
+#endif
+    linkWasmWithWasmLd(plan);
 }
 
 static TargetResources selectTargetResources(CodegenTarget target) {
@@ -469,7 +536,7 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
 
     try {
         if (options.Target == CodegenTarget::Wasm32Wasi) {
-            linkWasmWithWasmLd(buildWasiLinkPlan(objPath, tempLibGc, outputPath));
+            linkWasm(buildWasiLinkPlan(objPath, tempLibGc, outputPath));
         } else {
             linkNativeExecutable(objPath, tempLibGc, outputPath);
         }

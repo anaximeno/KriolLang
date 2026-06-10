@@ -27,6 +27,7 @@ endif()
 
 option(KRIOL_STATIC "Statically link the kriol binary in Release builds" OFF)
 option(KRIOL_ENABLE_WASM "Build the kriol compiler with wasm32-wasi output support" ON)
+option(KRIOL_USE_EMBEDDED_LLD "Use LLD as an embedded library for wasm32-wasi final linking" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -76,6 +77,56 @@ separate_arguments(
 
 list(FILTER LLVM_DEFINITIONS_LIST EXCLUDE REGEX "^-fno-exceptions$")
 list(FILTER LLVM_DEFINITIONS_LIST EXCLUDE REGEX "^-std=")
+
+set(KRIOL_LLD_LIBS)
+if(KRIOL_USE_EMBEDDED_LLD)
+    if(NOT KRIOL_ENABLE_WASM)
+        message(FATAL_ERROR "KRIOL_USE_EMBEDDED_LLD requires KRIOL_ENABLE_WASM=ON")
+    endif()
+
+    string(REGEX MATCH "^[0-9]+" LLVM_VERSION_MAJOR "${LLVM_PACKAGE_VERSION}")
+
+    find_path(
+        LLD_INCLUDE_DIR
+        lld/Common/Driver.h
+        HINTS ${LLVM_INCLUDE_DIRS}
+        REQUIRED
+    )
+
+    find_library(
+        LLD_COMMON_LIBRARY
+        NAMES lldCommon
+        HINTS ${LLVM_LIBRARY_DIRS}
+        REQUIRED
+    )
+
+    find_library(
+        LLD_WASM_LIBRARY
+        NAMES lldWasm
+        HINTS ${LLVM_LIBRARY_DIRS}
+        REQUIRED
+    )
+
+    find_library(
+        LLVM_MONOLITHIC_LIBRARY
+        NAMES LLVM-${LLVM_VERSION_MAJOR} LLVM
+        HINTS ${LLVM_LIBRARY_DIRS}
+        REQUIRED
+    )
+
+    set(LLVM_LIBS ${LLVM_MONOLITHIC_LIBRARY})
+
+    list(APPEND KRIOL_LLD_LIBS
+        ${LLD_WASM_LIBRARY}
+        ${LLD_COMMON_LIBRARY}
+    )
+
+    message(STATUS "Using embedded LLD wasm linker")
+    message(STATUS "  LLD include: ${LLD_INCLUDE_DIR}")
+    message(STATUS "  LLD wasm lib: ${LLD_WASM_LIBRARY}")
+    message(STATUS "  LLD common lib: ${LLD_COMMON_LIBRARY}")
+    message(STATUS "  LLVM lib: ${LLVM_MONOLITHIC_LIBRARY}")
+endif()
 
 # -----------------------------------------------------------------------------
 # Boehm GC
@@ -187,6 +238,7 @@ target_include_directories(
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_BINARY_DIR}
     ${LLVM_INCLUDE_DIRS}
+    ${LLD_INCLUDE_DIR}
 )
 
 target_compile_options(
@@ -200,6 +252,7 @@ target_compile_definitions(
     kriol
     PRIVATE
     KRIOL_ENABLE_WASM=$<BOOL:${KRIOL_ENABLE_WASM}>
+    KRIOL_USE_EMBEDDED_LLD=$<BOOL:${KRIOL_USE_EMBEDDED_LLD}>
     KRIOL_WASI_TARGET="${KRIOL_WASI_TARGET}"
     KRIOL_WASI_SYSROOT="${KRIOL_WASI_SYSROOT}"
 )
@@ -221,6 +274,7 @@ endif()
 target_link_libraries(
     kriol
     PRIVATE
+    ${KRIOL_LLD_LIBS}
     ${LLVM_LIBS}
     gc
     m
