@@ -329,14 +329,12 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
 
     try {
         if (options.Target == CodegenTarget::Wasm32Wasi) {
-            std::string ccPath = findProgram({"clang-19", "clang"}, "WASI linker 'clang-19' or 'clang'");
+            std::string ccPath = findProgram({"clang-20", "clang-19", "clang"}, "WASI linker 'clang-20', 'clang-19', or 'clang'");
             std::vector<std::string> linkArgs = {
                 ccPath,
                 "--target=" + std::string(KRIOL_WASI_TARGET),
                 "--sysroot=" + std::string(KRIOL_WASI_SYSROOT),
-                "-nostartfiles",
-                objPath,
-                "-Wl,--export=_start"
+                objPath
             };
             linkArgs.push_back(tempLibGc);
             linkArgs.push_back("-o");

@@ -96,7 +96,6 @@ if(KRIOL_ENABLE_WASM)
             -o
             ${RUNTIME_WASM32_WASI_GC_BC}
             -I${BDWGC_DIR}/include
-            -DKRIOL_RUNTIME_WASI_START
 
         DEPENDS
             ${CMAKE_SOURCE_DIR}/runtime/kriol_runtime.c

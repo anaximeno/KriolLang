@@ -92,18 +92,18 @@ Formatted strings use the embedded Boehm GC runtime, including for WASI output.
 
 ## Build
 
-If you want to build the project, currently it only works mostly on Linux based operating systems. It depends mainly on **clang-19**, **clang++-19**, and **llvm-19** to compile the source code and link user programs, and **bison** and **flex** to compile the language rules.
+If you want to build the project, currently it only works mostly on Linux based operating systems. It depends mainly on **Clang/LLVM 20** and **LLD 20** to compile the source code and link user programs, and **bison** and **flex** to compile the language rules.
 
 If you are on a Debian (or Ubuntu) based Linux operating system you can install the dependencies using the following command:
 
 ```sh
-apt install make flex bison clang-19 clang++-19 llvm-19 llvm-19-dev libgc-dev xxd cmake
+apt install make flex bison clang-20 llvm-20 llvm-20-dev llvm-20-tools lld-20 libgc-dev zlib1g-dev libzstd-dev xxd cmake
 ```
 
 WASI output also needs the WASI libc and compiler runtime packages:
 
 ```sh
-apt install wasi-libc libclang-rt-19-dev-wasm32
+apt install wasi-libc libclang-rt-20-dev-wasm32
 ```
 
 WASM support is enabled by default when building `kriol`. If you want a

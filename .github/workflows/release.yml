@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - uses: actions/checkout@v4
@@ -16,11 +16,11 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends flex bison \
-            clang-19 llvm-19 llvm-19-dev cmake xxd \
-            wasi-libc libclang-rt-19-dev-wasm32
+            clang-20 llvm-20 llvm-20-dev llvm-20-tools lld-20 cmake xxd \
+            zlib1g-dev libzstd-dev wasi-libc libclang-rt-20-dev-wasm32
 
-      - name: Add LLVM 19 to PATH
-        run: echo "/usr/lib/llvm-19/bin" >> $GITHUB_PATH
+      - name: Add LLVM 20 to PATH
+        run: echo "/usr/lib/llvm-20/bin" >> $GITHUB_PATH
 
       - name: Clone submodules
         run: git submodule update --init
@@ -30,8 +30,8 @@ jobs:
           cmake -B build/release \
             -DCMAKE_BUILD_TYPE=Release \
             -DKRIOL_STATIC=ON \
-            -DCMAKE_C_COMPILER=clang-19 \
-            -DCMAKE_CXX_COMPILER=clang++-19
+            -DCMAKE_C_COMPILER=clang-20 \
+            -DCMAKE_CXX_COMPILER=clang++-20
 
           cmake --build build/release --target check
 

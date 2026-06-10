@@ -4,8 +4,8 @@ cmake_minimum_required(VERSION 3.20)
 # Compiler selection
 # -----------------------------------------------------------------------------
 
-find_program(_CLANG NAMES clang-19 clang)
-find_program(_CLANGPP NAMES clang++-19 clang++)
+find_program(_CLANG NAMES clang-20 clang-19 clang)
+find_program(_CLANGPP NAMES clang++-20 clang++-19 clang++)
 
 if(_CLANG)
     set(CMAKE_C_COMPILER "${_CLANG}")
@@ -35,7 +35,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Tools
 # -----------------------------------------------------------------------------
 
-find_program(CLANG_PROGRAM NAMES clang-19 clang REQUIRED)
+find_program(CLANG_PROGRAM NAMES clang-20 clang-19 clang REQUIRED)
 find_program(XXD_PROGRAM xxd REQUIRED)
 find_program(VALGRIND valgrind)
 
