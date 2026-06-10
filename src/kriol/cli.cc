@@ -27,6 +27,11 @@ extern FILE *yyin;
 
 extern int yyparse(kriol::ast::BlockSttmt** Program);
 extern int yylex_destroy(void);
+extern int yylineno;
+struct yy_buffer_state;
+typedef yy_buffer_state *YY_BUFFER_STATE;
+extern YY_BUFFER_STATE yy_scan_string(const char *yy_str);
+extern void yy_delete_buffer(YY_BUFFER_STATE b);
 
 static std::string g_source_file;
 
@@ -191,6 +196,7 @@ void cli::KriolLangParserWrapper::ParseFile(std::string filename, ast::BlockSttm
 
     yyin = file;
     cli::SetSourceFile(filename);
+    yylineno = 1;
     try {
         yyparse(Program);
     } catch (...) {
@@ -202,8 +208,72 @@ void cli::KriolLangParserWrapper::ParseFile(std::string filename, ast::BlockSttm
 
 void cli::KriolLangParserWrapper::ParseText(std::string text, ast::BlockSttmt** Program)
 {
-    /// TODO: Implement this
-    cli::PrintErr("cli::KriolLangParserWrapper::ParseText is not implemented yet!\n", -1);
+    YY_BUFFER_STATE buffer = yy_scan_string(text.c_str());
+    if (!buffer)
+        cli::PrintErr("Couldn't create scanner buffer for source text!", 1);
+
+    yylineno = 1;
+    try {
+        yyparse(Program);
+    } catch (...) {
+        yy_delete_buffer(buffer);
+        throw;
+    }
+    yy_delete_buffer(buffer);
+}
+
+cli::CompileResult cli::Compile(const cli::CompileOptions& options)
+{
+    CompileResult result;
+    std::string sourceName = options.sourceName.empty()
+        ? (options.inputKind == CompileInputKind::File ? options.input : "<memory>")
+        : options.sourceName;
+    cli::SetSourceFile(sourceName);
+
+    ast::BlockSttmt *ProgramAST = KriolLangParserWrapper::ParseCode(
+        options.input,
+        options.inputKind == CompileInputKind::File
+    );
+    std::unique_ptr<ast::BlockSttmt> ProgramNode(ProgramAST);
+
+    if (ProgramNode)
+    {
+        kriol::sema::SemanticAnalyzer sema;
+        sema.SetSourceFile(sourceName);
+        sema.Check(ProgramNode.get());
+        if (sema.HasErrors())
+        {
+            result.diagnostics = sema.GetErrors();
+            return result;
+        }
+    }
+
+    ast::CodeGenVisitor codegenVisitor(sourceName);
+    if (ProgramNode) ProgramNode->accept(codegenVisitor);
+
+    if (options.emitIR)
+    {
+        result.ir = codegenVisitor.emitIR();
+        if (options.outfile != "")
+        {
+            Compiler::SaveCodeToFile(result.ir, options.outfile);
+            result.outputPath = options.outfile;
+        }
+        return result;
+    }
+
+    ast::EmitOptions emitOptions;
+    emitOptions.Target = options.target == "wasm32-wasi"
+        ? ast::CodegenTarget::Wasm32Wasi
+        : ast::CodegenTarget::Native;
+
+    std::string defaultOutfile = emitOptions.Target == ast::CodegenTarget::Wasm32Wasi
+        ? "a.wasm"
+        : "a.out";
+    std::string outfile = options.outfile != "" ? options.outfile : defaultOutfile;
+    codegenVisitor.emit(outfile, emitOptions);
+    result.outputPath = outfile;
+    return result;
 }
 
 
@@ -225,48 +295,26 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
             std::string(KR_STANDARD_FILE_EXTENSION) + "' or '" + std::string(KR_ALTERNATIVE_FILE_EXTENSION) + "' file extension.", 1);
     }
 
-    ast::BlockSttmt *ProgramAST = KriolLangParserWrapper::ParseCode(Args.filename, true);
-    std::unique_ptr<ast::BlockSttmt> ProgramNode(ProgramAST);
-
-    if (ProgramNode)
+    try
     {
-        kriol::sema::SemanticAnalyzer sema;
-        sema.SetSourceFile(Args.filename);
-        sema.Check(ProgramNode.get());
-        if (sema.HasErrors())
+        CompileOptions options;
+        options.inputKind = CompileInputKind::File;
+        options.input = Args.filename;
+        options.sourceName = Args.filename;
+        options.outfile = Args.outfile;
+        options.target = Args.target;
+        options.emitIR = Args.emitIR;
+
+        CompileResult result = Compile(options);
+        if (!result.diagnostics.empty())
         {
-            for (const auto& err : sema.GetErrors())
+            for (const auto& err : result.diagnostics)
                 cli::PrintErr(err);
             throw cli::FatalError("semantic errors", 1);
         }
-    }
 
-    try
-    {
-        ast::CodeGenVisitor codegenVisitor(Args.filename);
-        if (ProgramNode) ProgramNode->accept(codegenVisitor);
-
-        if (Args.emitIR)
-        {
-            std::string ir = codegenVisitor.emitIR();
-            if (Args.outfile != "")
-                SaveCodeToFile(ir, Args.outfile);
-            else
-                std::cout << ir;
-        }
-        else
-        {
-            ast::EmitOptions options;
-            options.Target = Args.target == "wasm32-wasi"
-                ? ast::CodegenTarget::Wasm32Wasi
-                : ast::CodegenTarget::Native;
-
-            std::string defaultOutfile = options.Target == ast::CodegenTarget::Wasm32Wasi
-                ? "a.wasm"
-                : "a.out";
-            std::string outfile = Args.outfile != "" ? Args.outfile : defaultOutfile;
-            codegenVisitor.emit(outfile, options);
-        }
+        if (Args.emitIR && Args.outfile == "")
+            std::cout << result.ir;
     }
     catch (std::exception &err)
     {

@@ -11,6 +11,7 @@
 #include <memory>
 #include <algorithm>
 #include <stdexcept>
+#include <vector>
 
 namespace ap = argparse;
 
@@ -42,6 +43,28 @@ namespace kriol
         void ExecuteCommand(std::string command);
         /// Encodes a string to hexadecimal string
         std::string ConvertToHex(std::string str);
+
+        enum class CompileInputKind {
+            File,
+            SourceText
+        };
+
+        struct CompileOptions {
+            CompileInputKind inputKind = CompileInputKind::File;
+            std::string input;
+            std::string sourceName;
+            std::string outfile;
+            std::string target = "native";
+            bool emitIR = false;
+        };
+
+        struct CompileResult {
+            std::string ir;
+            std::string outputPath;
+            std::vector<std::string> diagnostics;
+        };
+
+        CompileResult Compile(const CompileOptions& options);
 
         class KriolLangParserWrapper
         {
@@ -77,14 +100,14 @@ namespace kriol
             void Run(const int argc, const char *const *argv);
             /// Cleans up left over resources
             static void Cleanup();
+            /// Save compiler output into a file.
+            static void SaveCodeToFile(std::string Code, std::string Filename);
 
         private:
             /// Used to parse the command-line args
             void ParseArgs(const int argc, const char *const *argv);
             /// Used to define the arguments
             void DefineArgs(void);
-            /// Save the transpiled code into a file
-            void SaveCodeToFile(std::string Code, std::string Filename);
         };
     };
 };
