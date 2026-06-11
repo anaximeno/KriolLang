@@ -248,7 +248,12 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
         }
     }
 
+    ast::CodegenTarget Target = options.target == "wasm32-wasi"
+        ? ast::CodegenTarget::Wasm32Wasi
+        : ast::CodegenTarget::Native;
+
     ast::CodeGenVisitor codegenVisitor(sourceName);
+    codegenVisitor.CurrentTarget = Target;
     if (ProgramNode) ProgramNode->accept(codegenVisitor);
 
     if (options.emitIR)
@@ -262,15 +267,14 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
         return result;
     }
 
-    ast::EmitOptions emitOptions;
-    emitOptions.Target = options.target == "wasm32-wasi"
-        ? ast::CodegenTarget::Wasm32Wasi
-        : ast::CodegenTarget::Native;
-
-    std::string defaultOutfile = emitOptions.Target == ast::CodegenTarget::Wasm32Wasi
+    std::string defaultOutfile = Target == ast::CodegenTarget::Wasm32Wasi
         ? "a.wasm"
         : "a.out";
+
     std::string outfile = options.outfile != "" ? options.outfile : defaultOutfile;
+
+    ast::EmitOptions emitOptions = {.Target = Target};
+
     if (options.outputToMemory)
     {
         if (emitOptions.Target != ast::CodegenTarget::Wasm32Wasi)

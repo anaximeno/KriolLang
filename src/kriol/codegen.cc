@@ -207,6 +207,7 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
         linkerArg0,
         "-m",
         "wasm32",
+        "--export=__main_argc_argv",
         wasiInputs.Crt1Command,
         objPath,
         tempLibGc,
@@ -699,16 +700,27 @@ void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
 }
 
 void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
-    bool isMain   = (node.Name == "inisiu");
-    std::string name = isMain ? "main" : node.Name;
+    bool isMain = (node.Name == "inisiu");
+    // NOTE: WASI's crt1-command.o (wasi-sdk >= 16 or so) expects the user entry point
+    // as __main_argc_argv(i32, ptr) rather than main(). "main" exists in libc as
+    // a weak wrapper that calls __main_argc_argv, but only if the user doesn't
+    // define their own main — which we do, causing the stub to win.
+    // When eventually argc/argv is exposed to the Kriol language, this stays the same.
+    std::string name = isMain
+        ? (CurrentTarget == CodegenTarget::Wasm32Wasi ? "__main_argc_argv" : "main")
+        : node.Name;
 
     // already declared
     if (Mod->getFunction(name)) return;
 
     std::vector<llvm::Type*> paramTypes;
-    if (node.Args)
+    if (isMain && (CurrentTarget == CodegenTarget::Wasm32Wasi)) {
+        paramTypes.push_back(llvm::Type::getInt32Ty(Context));
+        paramTypes.push_back(llvm::PointerType::getUnqual(Context));
+    } else if (node.Args) {
         for (auto& arg : node.Args->Args)
             paramTypes.push_back(mapType(arg->Type));
+    }
 
     llvm::Type* retTy = isMain
         ? llvm::Type::getInt32Ty(Context)
@@ -757,12 +769,23 @@ static llvm::Function* getOrDeclareKriolGcInit(llvm::Module& Mod, llvm::LLVMCont
 
 void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
-    std::string name = isMain ? "main" : node.Name;
+    // NOTE: WASI's crt1-command.o (wasi-sdk >= 16 or so) expects the user entry point
+    // as __main_argc_argv(i32, ptr) rather than main(). "main" exists in libc as
+    // a weak wrapper that calls __main_argc_argv, but only if the user doesn't
+    // define their own main — which we do, causing the stub to win.
+    // When eventually argc/argv is exposed to the Kriol language, this stays the same.
+    std::string name = isMain
+        ? (CurrentTarget == CodegenTarget::Wasm32Wasi ? "__main_argc_argv" : "main")
+        : node.Name;
 
     std::vector<llvm::Type*> paramTypes;
-    if (node.Args)
+    if (isMain && (CurrentTarget == CodegenTarget::Wasm32Wasi)) {
+        paramTypes.push_back(llvm::Type::getInt32Ty(Context));
+        paramTypes.push_back(llvm::PointerType::getUnqual(Context));
+    } else if (node.Args) {
         for (auto& arg : node.Args->Args)
             paramTypes.push_back(mapType(arg->Type));
+    }
 
     llvm::Type* retTy = isMain
         ? llvm::Type::getInt32Ty(Context)
@@ -776,7 +799,11 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
         fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
     }
 
-    if (node.Args) {
+    if (isMain && (CurrentTarget == CodegenTarget::Wasm32Wasi)) {
+        auto it = fn->arg_begin();
+        it->setName("argc"); ++it;
+        it->setName("argv");
+    } else if (node.Args) {
         size_t i = 0;
         for (auto& llvmArg : fn->args())
             llvmArg.setName(node.Args->Args[i++]->Name);
@@ -787,9 +814,11 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     CurrentFunction = fn;
 
     pushScope();
-    if (node.Args) {
+    size_t nodeArgCount = (node.Args ? node.Args->Args.size() : 0);
+    if (nodeArgCount > 0) {
         size_t i = 0;
         for (auto& llvmArg : fn->args()) {
+            if (i >= nodeArgCount) break; // XXX: skip hidden WASI argc/argv
             auto& p = node.Args->Args[i++];
             TypeTable[p->Name] = p->Type;
             auto* a = createEntryAlloca(fn, p->Name, llvmArg.getType());

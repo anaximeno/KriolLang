@@ -102,6 +102,8 @@ namespace ast {
                                     std::vector<llvm::Value*>& outArgs);
 
     public:
+        CodegenTarget CurrentTarget;
+
         explicit CodeGenVisitor(const std::string& moduleName);
 
         /// Serialise the module as LLVM IR text.
