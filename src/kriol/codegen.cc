@@ -1053,7 +1053,7 @@ void CodeGenVisitor::visit(LiteralExpr& node) {
         std::string s = v;
         if (s.size() >= 2 && (s.front() == '"' || s.front() == '\'') && s.back() == s.front())
             s = s.substr(1, s.size() - 2);
-        LastValue = Builder->CreateGlobalStringPtr(processEscapes(s));
+        LastValue = Builder->CreateGlobalString(processEscapes(s));
     } else {
         LastValue = nullptr;
     }
@@ -1306,7 +1306,7 @@ void CodeGenVisitor::visit(FStringExpr& node) {
         }
     }
 
-    auto* fmtGstr = Builder->CreateGlobalStringPtr(fmtStr, "fstr_fmt");
+    auto* fmtGstr = Builder->CreateGlobalString(fmtStr, "fstr_fmt");
     callArgs.insert(callArgs.begin(), fmtGstr);
     auto* formatFn = getOrDeclareKriolFormat(*Mod, Context);
     LastValue = Builder->CreateCall(formatFn, callArgs, "fstr");
