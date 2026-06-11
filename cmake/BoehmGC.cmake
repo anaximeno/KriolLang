@@ -14,9 +14,14 @@ else()
     set(_GC_SHARED ON)
 endif()
 
-set(_OLD_GC_BUILD_SHARED_LIBS ${GC_BUILD_SHARED_LIBS})
+if(DEFINED BUILD_SHARED_LIBS)
+    set(_KRIOL_OLD_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
+    set(_KRIOL_HAD_BUILD_SHARED_LIBS ON)
+else()
+    set(_KRIOL_HAD_BUILD_SHARED_LIBS OFF)
+endif()
 
-set(GC_BUILD_SHARED_LIBS ${_GC_SHARED} CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS ${_GC_SHARED} CACHE BOOL "" FORCE)
 
 set(enable_docs              OFF CACHE BOOL "" FORCE)
 set(enable_gcj_support       OFF CACHE BOOL "" FORCE)
@@ -29,10 +34,10 @@ add_subdirectory(
     EXCLUDE_FROM_ALL
 )
 
-set(
-    GC_BUILD_SHARED_LIBS
-    ${_OLD_GC_BUILD_SHARED_LIBS}
-    CACHE BOOL "" FORCE
-)
+if(_KRIOL_HAD_BUILD_SHARED_LIBS)
+    set(BUILD_SHARED_LIBS ${_KRIOL_OLD_BUILD_SHARED_LIBS} CACHE BOOL "" FORCE)
+else()
+    unset(BUILD_SHARED_LIBS CACHE)
+endif()
 
 message(STATUS "Boehm GC shared=${_GC_SHARED}")

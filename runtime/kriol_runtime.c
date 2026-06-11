@@ -8,10 +8,19 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <stdlib.h>
+
+#ifndef KRIOL_RUNTIME_NO_GC
+#define KRIOL_RUNTIME_NO_GC 0
+#endif
+
+#if !KRIOL_RUNTIME_NO_GC
 #include <gc.h>
+#endif
 
 void __kriol_gc_init(void) {
+#if !KRIOL_RUNTIME_NO_GC
     GC_INIT();
+#endif
 }
 
 void __kriol_print_nter(int64_t v) {
@@ -54,14 +63,6 @@ void __kriol_println_textu(const char* s) {
     putchar('\n');
 }
 
-/* Build a formatted string (f-string support).
- *
- * Accepts a printf-style format string and variadic args.
- * Returns a GC-managed char*, memory is reclaimed automatically by the
- * Boehm GC.
- *
- * On allocation failure returns NULL.
- */
 char* __kriol_format(const char* fmt, ...) {
     va_list args;
 
@@ -73,7 +74,11 @@ char* __kriol_format(const char* fmt, ...) {
     // excluding null terminator. If needed is negative, an encoding error occurred.
     if (needed < 0) return NULL;
 
+#if KRIOL_RUNTIME_NO_GC
+    char* buf = (char*)malloc((size_t)needed + 1);
+#else
     char* buf = (char*)GC_malloc((size_t)needed + 1);
+#endif
 
     if (!buf) return NULL;
 

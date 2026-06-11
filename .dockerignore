@@ -1,0 +1,10 @@
+.git
+.agents
+.codex
+build
+build-*
+*.o
+*.wasm
+*.out
+a.out
+dpkg.log

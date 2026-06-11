@@ -1,6 +1,3 @@
-#include "../../include/kriol/codegen.hh"
-#include "../../include/kriol/type_utils.hh"
-
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/raw_ostream.h>
@@ -18,18 +15,40 @@
 #include <llvm/Support/Program.h>
 #include <llvm/Support/Path.h>
 
+#if KRIOL_USE_EMBEDDED_LLD
+
+#include <lld/Common/Driver.h>
+LLD_HAS_DRIVER(wasm)
+
+#endif
+
 #include <stdexcept>
 #include <cstdlib>
 #include <cstdio>
 #include <initializer_list>
 
-// NOTE: these are generated and injected in compile time by
-// the build system.
+#include "../../include/kriol/codegen.hh"
+#include "../../include/kriol/type_utils.hh"
+
+// NOTE: these includes below are generated and
+// injected in compile time by the build system.
 #include "kriol_runtime_native_gc.bc.h"
 #include "libgc_native.h"
+
 #if KRIOL_ENABLE_WASM
+
+#if KRIOL_WASI_ENABLE_GC
 #include "kriol_runtime_wasm32_wasi_gc.bc.h"
 #include "libgc_wasm32_wasi.h"
+#else
+#include "kriol_runtime_wasm32_wasi_nogc.bc.h"
+#endif
+
+#include "wasi_crt1_command.o.h"
+#include "wasi_libc.a.h"
+#include "wasi_libm.a.h"
+#include "wasi_builtins.a.h"
+
 #endif
 
 
@@ -77,10 +96,30 @@ namespace {
 
 using kriol::typeutils::arrayElementType;
 using kriol::typeutils::parseType;
+using kriol::ast::CodegenTarget;
 
 struct EmbeddedBlob {
     const unsigned char* Data;
     unsigned int Len;
+};
+
+struct TargetResources {
+    std::string Triple;
+    EmbeddedBlob Runtime;
+    EmbeddedBlob GcArchive;
+};
+
+struct WasiLinkPlan {
+    std::string LinkerPath;
+    std::string OutputPath;
+    std::vector<std::string> Args;
+};
+
+struct WasiInputs {
+    std::string Crt1Command;
+    std::string Libc;
+    std::string Libm;
+    std::string Builtins;
 };
 
 static void initializeTargets() {
@@ -109,6 +148,16 @@ static std::string findProgram(std::initializer_list<const char*> names,
     }
     throw std::runtime_error("The " + description + " could not be found in the system.");
 }
+
+#if KRIOL_USE_EMBEDDED_LLD
+static std::string findProgramOptional(std::initializer_list<const char*> names) {
+    for (const char* name : names) {
+        auto path = llvm::sys::findProgramByName(name);
+        if (path) return *path;
+    }
+    return {};
+}
+#endif
 
 static std::string writeTempBlob(const char* stem,
                                  const char* suffix,
@@ -145,6 +194,231 @@ static void runProgram(const std::string& program,
 
     if (execFailed || ret != 0)
         throw std::runtime_error(failurePrefix + err);
+}
+
+static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
+                                      const std::string& tempLibGc,
+                                      const WasiInputs& wasiInputs,
+                                      const std::string& outputPath) {
+#if KRIOL_USE_EMBEDDED_LLD
+    std::string wasmLdPath = findProgramOptional({"wasm-ld-20", "wasm-ld-19", "wasm-ld"});
+    std::string linkerArg0 = wasmLdPath.empty() ? "wasm-ld" : wasmLdPath;
+#else
+    std::string wasmLdPath = findProgram(
+        {"wasm-ld-20", "wasm-ld-19", "wasm-ld"},
+        "WASI linker 'wasm-ld-20', 'wasm-ld-19', or 'wasm-ld'"
+    );
+    std::string linkerArg0 = wasmLdPath;
+#endif
+    WasiLinkPlan plan;
+    plan.LinkerPath = wasmLdPath;
+    plan.OutputPath = outputPath;
+    plan.Args = {
+        linkerArg0,
+        "-m",
+        "wasm32",
+        "--export=__main_argc_argv",
+        wasiInputs.Crt1Command,
+        objPath,
+    };
+    if (!tempLibGc.empty())
+        plan.Args.push_back(tempLibGc);
+    plan.Args.insert(plan.Args.end(), {
+        wasiInputs.Libm,
+        wasiInputs.Libc,
+        wasiInputs.Builtins,
+        "-o",
+        outputPath
+    });
+
+    return plan;
+}
+
+static void linkWasmWithWasmLd(const WasiLinkPlan& plan) {
+    if (plan.LinkerPath.empty())
+        throw std::runtime_error("The WASI linker fallback is not available.");
+    runProgram(plan.LinkerPath, plan.Args, "Failure in the final WASI linkage: ");
+}
+
+#if KRIOL_USE_EMBEDDED_LLD
+static void linkWasmWithEmbeddedLld(const WasiLinkPlan& plan) {
+    std::vector<const char*> args;
+    args.reserve(plan.Args.size());
+    for (const auto& arg : plan.Args)
+        args.push_back(arg.c_str());
+
+    std::string stdoutText;
+    std::string stderrText;
+    llvm::raw_string_ostream stdoutStream(stdoutText);
+    llvm::raw_string_ostream stderrStream(stderrText);
+
+    lld::DriverDef drivers[] = {
+        {lld::Wasm, &lld::wasm::link}
+    };
+    lld::Result result = lld::lldMain(args, stdoutStream, stderrStream, drivers);
+    stdoutStream.flush();
+    stderrStream.flush();
+
+    if (result.retCode != 0 || !result.canRunAgain) {
+        std::string detail = stderrText.empty() ? stdoutText : stderrText;
+        if (!result.canRunAgain && detail.empty())
+            detail = "LLD reported that it cannot be called again.";
+        throw std::runtime_error("Failure in the embedded WASI linkage: " + detail);
+    }
+}
+#endif
+
+static void linkWasm(const WasiLinkPlan& plan) {
+#if KRIOL_USE_EMBEDDED_LLD
+    try {
+        linkWasmWithEmbeddedLld(plan);
+        return;
+    } catch (const std::exception&) {
+        llvm::sys::fs::remove(plan.OutputPath);
+    }
+#endif
+    linkWasmWithWasmLd(plan);
+}
+
+#if KRIOL_ENABLE_WASM
+static WasiInputs writeWasiInputs() {
+    return WasiInputs{
+        writeTempBlob(
+            "kriol_wasi_crt1_command",
+            "o",
+            EmbeddedBlob{wasi_crt1_command_o, wasi_crt1_command_o_len}
+        ),
+        writeTempBlob(
+            "kriol_wasi_libc",
+            "a",
+            EmbeddedBlob{wasi_libc_a, wasi_libc_a_len}
+        ),
+        writeTempBlob(
+            "kriol_wasi_libm",
+            "a",
+            EmbeddedBlob{wasi_libm_a, wasi_libm_a_len}
+        ),
+        writeTempBlob(
+            "kriol_wasi_builtins",
+            "a",
+            EmbeddedBlob{wasi_builtins_a, wasi_builtins_a_len}
+        )
+    };
+}
+
+static void removeWasiInputs(const WasiInputs& inputs) {
+    if (!inputs.Crt1Command.empty()) llvm::sys::fs::remove(inputs.Crt1Command);
+    if (!inputs.Libc.empty()) llvm::sys::fs::remove(inputs.Libc);
+    if (!inputs.Libm.empty()) llvm::sys::fs::remove(inputs.Libm);
+    if (!inputs.Builtins.empty()) llvm::sys::fs::remove(inputs.Builtins);
+}
+#endif
+
+static TargetResources selectTargetResources(CodegenTarget target) {
+    switch (target) {
+        case CodegenTarget::Native:
+            return TargetResources{
+                llvm::sys::getDefaultTargetTriple(),
+                EmbeddedBlob{kriol_runtime_native_gc_bc, kriol_runtime_native_gc_bc_len},
+                EmbeddedBlob{libgc_native_a, libgc_native_a_len}
+            };
+        case CodegenTarget::Wasm32Wasi:
+#if KRIOL_ENABLE_WASM
+#if KRIOL_WASI_ENABLE_GC
+            return TargetResources{
+                KRIOL_WASI_TARGET,
+                EmbeddedBlob{kriol_runtime_wasm32_wasi_gc_bc, kriol_runtime_wasm32_wasi_gc_bc_len},
+                EmbeddedBlob{libgc_wasm32_wasi_a, libgc_wasm32_wasi_a_len}
+            };
+#else
+            return TargetResources{
+                KRIOL_WASI_TARGET,
+                EmbeddedBlob{kriol_runtime_wasm32_wasi_nogc_bc, kriol_runtime_wasm32_wasi_nogc_bc_len},
+                EmbeddedBlob{nullptr, 0}
+            };
+#endif
+#else
+            throw std::runtime_error("This build of the compiler was built without the experimental 'wasm32-wasi' support.");
+#endif
+    }
+
+    throw std::runtime_error("Unsupported codegen target.");
+}
+
+static void linkRuntimeBitcode(llvm::Module& module,
+                               llvm::LLVMContext& context,
+                               EmbeddedBlob runtimeBlob) {
+    llvm::StringRef bcData(reinterpret_cast<const char*>(runtimeBlob.Data), runtimeBlob.Len);
+    auto memBuf = llvm::MemoryBuffer::getMemBuffer(bcData, "kriol_runtime", false);
+
+    auto expectedMod = llvm::parseBitcodeFile(*memBuf, context);
+    if (!expectedMod) {
+        std::string errDetail = llvm::toString(expectedMod.takeError());
+        throw std::runtime_error("Failed to parse runtime bitcode: " + errDetail);
+    }
+
+    bool linkErr = llvm::Linker::linkModules(module, std::move(expectedMod.get()));
+    if (linkErr)
+        throw std::runtime_error("Failed to merge runtime bitcode into the main module.");
+}
+
+static void emitObjectFile(llvm::Module& module,
+                           const std::string& targetTriple,
+                           const std::string& objPath) {
+    module.setTargetTriple(targetTriple);
+
+    std::string Error;
+    auto Target = llvm::TargetRegistry::lookupTarget(targetTriple, Error);
+    if (!Target)
+        throw std::runtime_error("Failed to find Target: " + Error);
+
+    auto CPU = "generic";
+    auto Features = "";
+    llvm::TargetOptions opt;
+    auto RM = std::optional<llvm::Reloc::Model>();
+    auto TargetMachine = Target->createTargetMachine(targetTriple, CPU, Features, opt, RM);
+
+    module.setDataLayout(TargetMachine->createDataLayout());
+
+    std::error_code EC;
+    llvm::raw_fd_ostream dest(objPath, EC, llvm::sys::fs::OF_None);
+    if (EC)
+        throw std::runtime_error("The object file could not be opened: " + EC.message());
+
+    llvm::legacy::PassManager pass;
+    auto FileType = llvm::CodeGenFileType::ObjectFile;
+    if (TargetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType))
+        throw std::runtime_error("The TargetMachine cannot output a file of such type.");
+
+    pass.run(module);
+    dest.flush();
+}
+
+static std::string writeGcArchive(CodegenTarget target, EmbeddedBlob gcBlob) {
+    if (!gcBlob.Data || gcBlob.Len == 0)
+        return {};
+
+    const char* stem = target == CodegenTarget::Wasm32Wasi
+        ? "embedded_libgc_wasm32_wasi"
+        : "embedded_libgc_native";
+    return writeTempBlob(stem, "a", gcBlob);
+}
+
+static void linkNativeExecutable(const std::string& objPath,
+                                 const std::string& tempLibGc,
+                                 const std::string& outputPath) {
+    std::string ccPath = findProgram({"clang", "cc"}, "linker 'clang' or 'cc'");
+    std::vector<std::string> linkArgs = {
+        ccPath,
+        "-no-pie",
+        objPath
+    };
+    if (!tempLibGc.empty())
+        linkArgs.push_back(tempLibGc);
+    linkArgs.push_back("-o");
+    linkArgs.push_back(outputPath);
+    linkArgs.push_back("-lm");
+    runProgram(ccPath, linkArgs, "Failure in the final linkage: ");
 }
 
 }
@@ -253,115 +527,73 @@ void CodeGenVisitor::emitNative(const std::string& outputPath) {
     emit(outputPath, {});
 }
 
+std::vector<unsigned char> CodeGenVisitor::emitToMemory(const EmitOptions& options) {
+    llvm::SmallString<128> outputPath;
+    std::error_code ec = llvm::sys::fs::createTemporaryFile(
+        options.Target == CodegenTarget::Wasm32Wasi ? "kriol_wasm_output" : "kriol_output",
+        options.Target == CodegenTarget::Wasm32Wasi ? "wasm" : "out",
+        outputPath
+    );
+    if (ec)
+        throw std::runtime_error("Failed to allocate temporary output file: " + ec.message());
+
+    std::string outputPathStr(outputPath.str());
+    try {
+        emit(outputPathStr, options);
+
+        auto outputBuffer = llvm::MemoryBuffer::getFile(outputPathStr);
+        if (!outputBuffer)
+            throw std::runtime_error("Failed to read compiler output: " + outputBuffer.getError().message());
+
+        llvm::StringRef bytes = outputBuffer.get()->getBuffer();
+        std::vector<unsigned char> result(bytes.bytes_begin(), bytes.bytes_end());
+        llvm::sys::fs::remove(outputPathStr);
+        return result;
+    } catch (...) {
+        llvm::sys::fs::remove(outputPathStr);
+        throw;
+    }
+}
+
 void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& options) {
-    EmbeddedBlob runtimeBlob{};
-    EmbeddedBlob gcBlob{};
-    std::string targetTriple;
     std::string objPath = outputPath + ".o";
+    TargetResources resources = selectTargetResources(options.Target);
 
-    switch (options.Target) {
-        case CodegenTarget::Native:
-            targetTriple = llvm::sys::getDefaultTargetTriple();
-            runtimeBlob = EmbeddedBlob{kriol_runtime_native_gc_bc, kriol_runtime_native_gc_bc_len};
-            gcBlob = EmbeddedBlob{libgc_native_a, libgc_native_a_len};
-            break;
-        case CodegenTarget::Wasm32Wasi:
+    linkRuntimeBitcode(*Mod, Context, resources.Runtime);
+    emitObjectFile(*Mod, resources.Triple, objPath);
+    std::string tempLibGc = writeGcArchive(options.Target, resources.GcArchive);
 #if KRIOL_ENABLE_WASM
-            targetTriple = KRIOL_WASI_TARGET;
-            runtimeBlob = EmbeddedBlob{kriol_runtime_wasm32_wasi_gc_bc, kriol_runtime_wasm32_wasi_gc_bc_len};
-            gcBlob = EmbeddedBlob{libgc_wasm32_wasi_a, libgc_wasm32_wasi_a_len};
-            break;
-#else
-            throw std::runtime_error("This build of the compiler was built without the experimental 'wasm32-wasi' support.");
+    WasiInputs wasiInputs;
+    if (options.Target == CodegenTarget::Wasm32Wasi)
+        wasiInputs = writeWasiInputs();
 #endif
-    }
-
-    llvm::StringRef bcData(reinterpret_cast<const char*>(runtimeBlob.Data), runtimeBlob.Len);
-    auto memBuf = llvm::MemoryBuffer::getMemBuffer(bcData, "kriol_runtime", false);
-
-    auto expectedMod = llvm::parseBitcodeFile(*memBuf, Context);
-    if (!expectedMod) {
-        std::string errDetail = llvm::toString(expectedMod.takeError());
-        throw std::runtime_error("Failed to parse runtime bitcode: " + errDetail);
-    }
-
-    bool linkErr = llvm::Linker::linkModules(*Mod, std::move(expectedMod.get()));
-    if (linkErr) {
-        throw std::runtime_error("Failed to merge runtime bitcode into the main module.");
-    }
-
-    Mod->setTargetTriple(targetTriple);
-
-    std::string Error;
-    auto Target = llvm::TargetRegistry::lookupTarget(targetTriple, Error);
-    if (!Target) {
-        throw std::runtime_error("Failed to find Target: " + Error);
-    }
-
-    auto CPU = "generic";
-    auto Features = "";
-    llvm::TargetOptions opt;
-    auto RM = std::optional<llvm::Reloc::Model>();
-    auto TargetMachine = Target->createTargetMachine(targetTriple, CPU, Features, opt, RM);
-
-    Mod->setDataLayout(TargetMachine->createDataLayout());
-
-    std::error_code EC;
-    llvm::raw_fd_ostream dest(objPath, EC, llvm::sys::fs::OF_None);
-    if (EC) {
-        throw std::runtime_error("The object file could not be opened: " + EC.message());
-    }
-
-    llvm::legacy::PassManager pass;
-    auto FileType = llvm::CodeGenFileType::ObjectFile;
-    if (TargetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
-        throw std::runtime_error("The TargetMachine cannot output a file of such type.");
-    }
-
-    pass.run(*Mod);
-    dest.flush();
-
-    std::string tempLibGc;
-    const char* stem = options.Target == CodegenTarget::Wasm32Wasi
-        ? "embedded_libgc_wasm32_wasi"
-        : "embedded_libgc_native";
-    tempLibGc = writeTempBlob(stem, "a", gcBlob);
 
     try {
         if (options.Target == CodegenTarget::Wasm32Wasi) {
-            std::string ccPath = findProgram({"clang-20", "clang-19", "clang"}, "WASI linker 'clang-20', 'clang-19', or 'clang'");
-            std::vector<std::string> linkArgs = {
-                ccPath,
-                "--target=" + std::string(KRIOL_WASI_TARGET),
-                "--sysroot=" + std::string(KRIOL_WASI_SYSROOT),
-                objPath
-            };
-            linkArgs.push_back(tempLibGc);
-            linkArgs.push_back("-o");
-            linkArgs.push_back(outputPath);
-            linkArgs.push_back("-lm");
-            runProgram(ccPath, linkArgs, "Failure in the final WASI linkage: ");
+#if KRIOL_ENABLE_WASM
+            linkWasm(buildWasiLinkPlan(objPath, tempLibGc, wasiInputs, outputPath));
+#else
+            throw std::runtime_error("kriol was built without wasm32-wasi support.");
+#endif
         } else {
-            std::string ccPath = findProgram({"clang", "cc"}, "linker 'clang' or 'cc'");
-            std::vector<std::string> linkArgs = {
-                ccPath,
-                "-no-pie",
-                objPath
-            };
-            linkArgs.push_back(tempLibGc);
-            linkArgs.push_back("-o");
-            linkArgs.push_back(outputPath);
-            linkArgs.push_back("-lm");
-            runProgram(ccPath, linkArgs, "Failure in the final linkage: ");
+            linkNativeExecutable(objPath, tempLibGc, outputPath);
         }
     } catch (...) {
         std::remove(objPath.c_str());
         if (!tempLibGc.empty()) llvm::sys::fs::remove(tempLibGc);
+#if KRIOL_ENABLE_WASM
+        if (options.Target == CodegenTarget::Wasm32Wasi)
+            removeWasiInputs(wasiInputs);
+#endif
         throw;
     }
 
     std::remove(objPath.c_str());
     if (!tempLibGc.empty()) llvm::sys::fs::remove(tempLibGc);
+#if KRIOL_ENABLE_WASM
+    if (options.Target == CodegenTarget::Wasm32Wasi)
+        removeWasiInputs(wasiInputs);
+#endif
 }
 
 void CodeGenVisitor::visit(VarDeclSttmt& node) {
@@ -493,16 +725,27 @@ void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
 }
 
 void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
-    bool isMain   = (node.Name == "inisiu");
-    std::string name = isMain ? "main" : node.Name;
+    bool isMain = (node.Name == "inisiu");
+    // NOTE: WASI's crt1-command.o (wasi-sdk >= 16 or so) expects the user entry point
+    // as __main_argc_argv(i32, ptr) rather than main(). "main" exists in libc as
+    // a weak wrapper that calls __main_argc_argv, but only if the user doesn't
+    // define their own main — which we do, causing the stub to win.
+    // When eventually argc/argv is exposed to the Kriol language, this stays the same.
+    std::string name = isMain
+        ? (CurrentTarget == CodegenTarget::Wasm32Wasi ? "__main_argc_argv" : "main")
+        : node.Name;
 
     // already declared
     if (Mod->getFunction(name)) return;
 
     std::vector<llvm::Type*> paramTypes;
-    if (node.Args)
+    if (isMain && (CurrentTarget == CodegenTarget::Wasm32Wasi)) {
+        paramTypes.push_back(llvm::Type::getInt32Ty(Context));
+        paramTypes.push_back(llvm::PointerType::getUnqual(Context));
+    } else if (node.Args) {
         for (auto& arg : node.Args->Args)
             paramTypes.push_back(mapType(arg->Type));
+    }
 
     llvm::Type* retTy = isMain
         ? llvm::Type::getInt32Ty(Context)
@@ -551,12 +794,23 @@ static llvm::Function* getOrDeclareKriolGcInit(llvm::Module& Mod, llvm::LLVMCont
 
 void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
-    std::string name = isMain ? "main" : node.Name;
+    // NOTE: WASI's crt1-command.o (wasi-sdk >= 16 or so) expects the user entry point
+    // as __main_argc_argv(i32, ptr) rather than main(). "main" exists in libc as
+    // a weak wrapper that calls __main_argc_argv, but only if the user doesn't
+    // define their own main — which we do, causing the stub to win.
+    // When eventually argc/argv is exposed to the Kriol language, this stays the same.
+    std::string name = isMain
+        ? (CurrentTarget == CodegenTarget::Wasm32Wasi ? "__main_argc_argv" : "main")
+        : node.Name;
 
     std::vector<llvm::Type*> paramTypes;
-    if (node.Args)
+    if (isMain && (CurrentTarget == CodegenTarget::Wasm32Wasi)) {
+        paramTypes.push_back(llvm::Type::getInt32Ty(Context));
+        paramTypes.push_back(llvm::PointerType::getUnqual(Context));
+    } else if (node.Args) {
         for (auto& arg : node.Args->Args)
             paramTypes.push_back(mapType(arg->Type));
+    }
 
     llvm::Type* retTy = isMain
         ? llvm::Type::getInt32Ty(Context)
@@ -570,7 +824,11 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
         fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
     }
 
-    if (node.Args) {
+    if (isMain && (CurrentTarget == CodegenTarget::Wasm32Wasi)) {
+        auto it = fn->arg_begin();
+        it->setName("argc"); ++it;
+        it->setName("argv");
+    } else if (node.Args) {
         size_t i = 0;
         for (auto& llvmArg : fn->args())
             llvmArg.setName(node.Args->Args[i++]->Name);
@@ -581,9 +839,11 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     CurrentFunction = fn;
 
     pushScope();
-    if (node.Args) {
+    size_t nodeArgCount = (node.Args ? node.Args->Args.size() : 0);
+    if (nodeArgCount > 0) {
         size_t i = 0;
         for (auto& llvmArg : fn->args()) {
+            if (i >= nodeArgCount) break; // XXX: skip hidden WASI argc/argv
             auto& p = node.Args->Args[i++];
             TypeTable[p->Name] = p->Type;
             auto* a = createEntryAlloca(fn, p->Name, llvmArg.getType());

@@ -102,6 +102,8 @@ namespace ast {
                                     std::vector<llvm::Value*>& outArgs);
 
     public:
+        CodegenTarget CurrentTarget = CodegenTarget::Native;
+
         explicit CodeGenVisitor(const std::string& moduleName);
 
         /// Serialise the module as LLVM IR text.
@@ -109,6 +111,9 @@ namespace ast {
 
         /// Compile the module to the selected executable/object format.
         void emit(const std::string& outputPath, const EmitOptions& options = {});
+
+        /// Compile the module and return the emitted bytes without keeping a file.
+        std::vector<unsigned char> emitToMemory(const EmitOptions& options = {});
 
         /// Compile the module to a native executable at outputPath.
         void emitNative(const std::string& outputPath);
