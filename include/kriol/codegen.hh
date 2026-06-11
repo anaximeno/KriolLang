@@ -102,7 +102,7 @@ namespace ast {
                                     std::vector<llvm::Value*>& outArgs);
 
     public:
-        CodegenTarget CurrentTarget;
+        CodegenTarget CurrentTarget = CodegenTarget::Native;
 
         explicit CodeGenVisitor(const std::string& moduleName);
 
