@@ -1,31 +1,28 @@
-fn dizenhaLinha(num tamanhu, bool dizenhaLinhaNaFin) {
-    dipoz num i;
-
+fn linha(nter tamanhu, bool kebra_linha) {
+    dipoz nter i;
     pa i = 0 ; i < tamanhu ; i += 1 {
         mostra("-");
     }
-
-    si dizenhaLinhaNaFin {
+    si kebra_linha {
         mostra("\n");
     }
 }
 
-fn mostraMensagem() {
-    num i = 1;
-
-    nkuantu i < 10 {
-        dizenhaLinha(i, sin);
-        i += 1;
+fn mensage_special(textu mensage, nter tamanhu_maximu) {
+    nter i = 0;
+    nkuantu i < tamanhu_maximu {
+        i += 1; linha(i, sin);
     }
 
-    dizenhaLinha(i, nau);
-    mostran("  Oi, Kriol!");
+    linha(i, nau);
+    mostran(f"\t{mensage}");
 
-    pa i = i - 1 ; i > 0 ; i = i - 1 {
-        dizenhaLinha(i, sin);
+    pa i -= 1 ; i > 0 ; i -= 1 {
+        linha(i, sin);
     }
 }
 
 fn inisiu() {
-    mostraMensagem();
+    mensage_special('Oi, Kriol!', 10);
+    mensage_special('Tudo Dret?', 5);
 }

@@ -1,5 +1,7 @@
-fn soma(num n) num {
-    num acc = 0;
+nter n = 10;
+
+fn soma(nter n) nter {
+    nter acc = 0;
 
     dipoz nter i;
     pa i = 1 ; i < n ; i += 1 {
@@ -10,6 +12,5 @@ fn soma(num n) num {
 }
 
 fn inisiu() {
-    num n = 10;
     mostran(f"Soma di 1 ti {n} é igual a {soma(n)}.");
 }

@@ -1,4 +1,4 @@
-fn min(nter a, nter b) nter {
+fn min(num a, num b) num {
     si a < b {
         divolvi a;
     } sinon {
@@ -7,7 +7,11 @@ fn min(nter a, nter b) nter {
 }
 
 fn inisiu() {
-    nter m = min(12, 20);
-    mostran(m);
-}
+    num[4] array1 = [12, 4.3, -17, 0];
+    num[4] array2 = [43, 20, -1.5, -1];
 
+    dipoz nter i;
+    pa i = 0; i < 4 ; i += 1 {
+      mostran(f'min {array1[i]} e {array2[i]} = {min(array1[i], array2[i])}');
+    }
+}
