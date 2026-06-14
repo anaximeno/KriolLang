@@ -68,21 +68,21 @@ fi
 
 # ---- wasm32-wasi compile checks --------------------------------------------
 if "$KRIOL" --help 2>&1 | grep -Fq "wasm32-wasi"; then
-    printf "  %-44s" "wasm32-wasi hello-world"
+    printf "  %-44s" "wasm32-wasi hello_world"
     tmpwasm=$(mktemp /tmp/kriol_wasm_XXXX.wasm)
-    if "$KRIOL" "$ROOT/examples/hello-world.kriol" --target wasm32-wasi -o "$tmpwasm" 2>/dev/null; then
+    if "$KRIOL" "$ROOT/examples/hello_world.kriol" --target wasm32-wasi -o "$tmpwasm" 2>/dev/null; then
         if command -v file >/dev/null 2>&1; then
             if file "$tmpwasm" | grep -Fq "WebAssembly"; then
                 echo " PASS"; pass=$((pass+1))
             else
                 echo " FAIL (not a WebAssembly module)"
-                record_failure "wasm32-wasi hello-world"
+                record_failure "wasm32-wasi hello_world"
             fi
         else
             echo " PASS"; pass=$((pass+1))
         fi
     else
-        echo " FAIL"; record_failure "wasm32-wasi hello-world"
+        echo " FAIL"; record_failure "wasm32-wasi hello_world"
     fi
     rm -f "$tmpwasm"
 

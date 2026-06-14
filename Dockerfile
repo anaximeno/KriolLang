@@ -57,11 +57,11 @@ RUN cmake -S . -B build/resolute \
         -DLLVM_DIR=/usr/lib/llvm-${LLVM_VERSION}/lib/cmake/llvm \
     && cmake --build build/resolute --target check
 
-RUN build/resolute/kriol examples/hello-world.kriol \
+RUN build/resolute/kriol examples/hello_world.kriol \
         --target wasm32-wasi \
-        -o /tmp/kriol-hello.wasm \
-    && file /tmp/kriol-hello.wasm \
-    && llvm-nm-${LLVM_VERSION} --defined-only /tmp/kriol-hello.wasm \
+        -o /tmp/kriol_hello.wasm \
+    && file /tmp/kriol_hello.wasm \
+    && llvm-nm-${LLVM_VERSION} --defined-only /tmp/kriol_hello.wasm \
         | grep -E '(^|[[:space:]])_start($|[[:space:]])'
 
 CMD ["build/resolute/kriol", "--help"]
